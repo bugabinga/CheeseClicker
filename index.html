@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <title>Cheese Clicker</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main class="game">
+    <section class="left panel">
+      <h1 class="title">CHEESE CLICKER</h1>
+      <div class="counter">
+        <div class="coins"><span id="coins">0</span></div>
+        <div class="label">cheese coins</div>
+        <div class="cps">per second: <span id="cps">0</span> · per click: <span id="perClick">1</span></div>
+      </div>
+      <div class="scene-wrap" id="sceneWrap">
+        <canvas id="scene" width="160" height="176"></canvas>
+      </div>
+      <p class="hint">click the cheese!</p>
+    </section>
+
+    <section class="right panel">
+      <div class="shop-scroll">
+        <div id="upgradeSection" hidden>
+          <h2 class="up-title">RAT UPGRADES</h2>
+          <p class="sub">make every click worth more</p>
+          <div id="upgrades" class="shop"></div>
+        </div>
+        <h2>HELPER SHOP</h2>
+        <p class="sub">cute critters that make cheese coins for you</p>
+        <div id="shop" class="shop"></div>
+      </div>
+      <div class="footer">
+        <span>total made: <span id="total">0</span></span>
+        <button id="reset" class="small-btn" type="button">reset</button>
+      </div>
+    </section>
+  </main>
+  <div class="rotate" aria-hidden="true">
+    <div class="rotate-icon">📱</div>
+    <p>please turn your phone<br>upright to play</p>
+  </div>
+  <script src="game.js"></script>
+</body>
+</html>
