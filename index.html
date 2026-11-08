@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <title>Cheese Clicker</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main class="game">
+    <section class="left panel">
+      <h1 class="title">CHEESE CLICKER</h1>
+      <div class="counter">
+        <div class="coins"><span id="coins">0</span></div>
+        <div class="label">cheese coins</div>
+        <div class="cps">per second: <span id="cps">0</span></div>
+      </div>
+      <div class="scene-wrap" id="sceneWrap">
+        <canvas id="scene" width="160" height="176"></canvas>
+      </div>
+      <p class="hint">click the cheese! +1 per click</p>
+    </section>
+
+    <section class="right panel">
+      <h2>WORM SHOP</h2>
+      <p class="sub">cute worms that help you make cheese coins</p>
+      <div id="shop" class="shop"></div>
+      <div class="footer">
+        <span>total made: <span id="total">0</span></span>
+        <button id="reset" class="small-btn" type="button">reset</button>
+      </div>
+    </section>
+  </main>
+  <script src="game.js"></script>
+</body>
+</html>
