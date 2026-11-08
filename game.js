@@ -5,24 +5,38 @@
   const W = 160, H = 176;           // logical pixel size of the scene
   const GROUND_Y = 132;
   const SAVE_KEY = "cheeseClicker.v1";
-  const MAX_VISIBLE_WORMS = 60;
-  const MAX_VISIBLE_PER_TYPE = 14;
+  const MAX_VISIBLE = 60;
+  const MAX_VISIBLE_PER_TYPE = 10;
   const COST_GROWTH = 1.15;
-
-  const WORMS = [
-    { id: "baby",   name: "Baby Worm",   desc: "tiny wiggly friend. nibbles slowly.", cost: 15,      cps: 0.1,  color: "#ffb8cc", dark: "#e889a6", segs: 4, hat: null },
-    { id: "busy",   name: "Busy Worm",   desc: "wears a headband. works hard!",       cost: 100,     cps: 1,    color: "#ff8fab", dark: "#d9607f", segs: 5, hat: "band" },
-    { id: "digger", name: "Digger Worm", desc: "digs up buried cheese.",              cost: 1100,    cps: 8,    color: "#f0a77c", dark: "#c47650", segs: 5, hat: "helmet" },
-    { id: "family", name: "Worm Family", desc: "the whole family helps out.",         cost: 12000,   cps: 47,   color: "#c9a0ff", dark: "#9a6fd6", segs: 5, hat: "bow" },
-    { id: "king",   name: "King Worm",   desc: "rules the cheese kingdom.",           cost: 130000,  cps: 260,  color: "#ff6b8b", dark: "#c43d5d", segs: 6, hat: "crown" },
-    { id: "space",  name: "Space Worm",  desc: "brings cheese from the moon.",        cost: 1400000, cps: 1400, color: "#8fd3ff", dark: "#4f9bd1", segs: 6, hat: "astro" },
-  ];
-
   const OUTLINE = "#3a1d2b";
 
+  // Helpers (worms + friends). kind = how it is drawn & moves.
+  const HELPERS = [
+    { id: "baby",    kind: "worm",    name: "Baby Worm",    desc: "tiny wiggly friend.",          cost: 15,      cps: 0.1,  color: "#ffb8cc", dark: "#e889a6", segs: 4, hat: null },
+    { id: "busy",    kind: "worm",    name: "Busy Worm",    desc: "wears a headband. works hard!", cost: 100,     cps: 1,    color: "#ff8fab", dark: "#d9607f", segs: 5, hat: "band" },
+    { id: "snail",   kind: "snail",   name: "Snail",        desc: "slow, but never gives up.",    cost: 500,     cps: 4 },
+    { id: "digger",  kind: "worm",    name: "Digger Worm",  desc: "digs up buried cheese.",       cost: 1100,    cps: 8,    color: "#f0a77c", dark: "#c47650", segs: 5, hat: "helmet" },
+    { id: "mouse",   kind: "mouse",   name: "Field Mouse",  desc: "the rat's little cousin.",     cost: 5000,    cps: 20 },
+    { id: "family",  kind: "worm",    name: "Worm Family",  desc: "the whole family helps out.",  cost: 12000,   cps: 47,   color: "#c9a0ff", dark: "#9a6fd6", segs: 5, hat: "bow" },
+    { id: "hamster", kind: "hamster", name: "Hamster",      desc: "stuffs cheese in its cheeks.", cost: 50000,   cps: 110 },
+    { id: "king",    kind: "worm",    name: "King Worm",    desc: "rules the cheese kingdom.",    cost: 130000,  cps: 260,  color: "#ff6b8b", dark: "#c43d5d", segs: 6, hat: "crown" },
+    { id: "bunny",   kind: "bunny",   name: "Cheese Bunny", desc: "hops in with cheese.",         cost: 600000,  cps: 700 },
+    { id: "space",   kind: "worm",    name: "Space Worm",   desc: "brings cheese from the moon.", cost: 1400000, cps: 1400, color: "#8fd3ff", dark: "#4f9bd1", segs: 6, hat: "astro" },
+  ];
+
+  // One-time click upgrades.
+  const UPGRADES = [
+    { id: "teeth",   name: "Sharp Teeth",  desc: "+1 per click",                 cost: 50,      add: 1,  badge: "#ffffff" },
+    { id: "bites",   name: "Bigger Bites", desc: "+2 per click",                 cost: 500,     add: 2,  badge: "#ffd43b" },
+    { id: "muscles", name: "Rat Muscles",  desc: "clicks x2",                    cost: 5000,    mult: 2, badge: "#ff6b6b" },
+    { id: "golden",  name: "Golden Teeth", desc: "clicks x2",                    cost: 50000,   mult: 2, badge: "#fab005" },
+    { id: "fever",   name: "Cheese Fever", desc: "clicks also give 2% of coins/sec", cost: 300000, pct: 0.02, badge: "#ff8fab" },
+    { id: "super",   name: "Super Rat",    desc: "clicks x3",                    cost: 4000000, mult: 3, badge: "#74c0fc" },
+  ];
+
   // ---------- state ----------
-  const state = { coins: 0, total: 0, owned: {} };
-  WORMS.forEach(w => (state.owned[w.id] = 0));
+  const state = { coins: 0, total: 0, owned: {}, upgrades: [] };
+  HELPERS.forEach(h => (state.owned[h.id] = 0));
 
   function load() {
     try {
@@ -31,18 +45,31 @@
       const s = JSON.parse(raw);
       if (Number.isFinite(s.coins) && s.coins >= 0) state.coins = s.coins;
       if (Number.isFinite(s.total) && s.total >= 0) state.total = s.total;
-      if (s.owned) WORMS.forEach(w => {
-        const n = s.owned[w.id];
-        if (Number.isInteger(n) && n >= 0) state.owned[w.id] = n;
+      if (s.owned) HELPERS.forEach(h => {
+        const n = s.owned[h.id];
+        if (Number.isInteger(n) && n >= 0) state.owned[h.id] = n;
       });
-    } catch (_) { /* no storage — play without saving */ }
+      if (Array.isArray(s.upgrades)) {
+        state.upgrades = s.upgrades.filter(id => UPGRADES.some(u => u.id === id));
+      }
+    } catch (_) { /* no storage: play without saving */ }
   }
   function save() {
     try { localStorage.setItem(SAVE_KEY, JSON.stringify(state)); } catch (_) {}
   }
 
-  const costOf = w => Math.ceil(w.cost * Math.pow(COST_GROWTH, state.owned[w.id]));
-  const cps = () => WORMS.reduce((s, w) => s + w.cps * state.owned[w.id], 0);
+  const has = id => state.upgrades.includes(id);
+  const costOf = h => Math.ceil(h.cost * Math.pow(COST_GROWTH, state.owned[h.id]));
+  const cps = () => HELPERS.reduce((s, h) => s + h.cps * state.owned[h.id], 0);
+  function clickPower() {
+    let add = 1, mult = 1, pct = 0;
+    for (const u of UPGRADES) if (has(u.id)) {
+      if (u.add) add += u.add;
+      if (u.mult) mult *= u.mult;
+      if (u.pct) pct += u.pct;
+    }
+    return add * mult + cps() * pct;
+  }
 
   function fmt(n, decimals = false) {
     if (n < 1000) {
@@ -74,6 +101,25 @@
       ctx.fillRect(x * scale, y * scale, scale, scale);
     }
     return c;
+  }
+
+  function disc(ctx, cx, cy, r, col) {
+    ctx.fillStyle = col;
+    for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) {
+      if (dx * dx + dy * dy <= r * r + r * 0.8) ctx.fillRect(cx + dx, cy + dy, 1, 1);
+    }
+  }
+
+  // Local drawing frame: (x, y) = front of the critter at ground level,
+  // lx grows forward (in facing direction), ly grows down.
+  function frame(ctx, x, y, dir) {
+    return {
+      px(lx, ly, w, h, col) {
+        ctx.fillStyle = col;
+        ctx.fillRect(dir > 0 ? x + lx : x - lx - w + 1, y + ly, w, h);
+      },
+      d(lx, ly, r, col) { disc(ctx, dir > 0 ? x + lx : x - lx, y + ly, r, col); },
+    };
   }
 
   // ---------- cheese (procedural pixel wedge) ----------
@@ -176,41 +222,36 @@
     window.addEventListener("blur", () => root.classList.remove("bite"));
   }
 
-  // ---------- worm drawing ----------
-  function disc(ctx, cx, cy, r, col) {
-    ctx.fillStyle = col;
-    for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) {
-      if (dx * dx + dy * dy <= r * r + r * 0.8) ctx.fillRect(cx + dx, cy + dy, 1, 1);
-    }
-  }
+  // ---------- critter drawing ----------
+  // All draw functions: (x, y) = front of critter at ground level.
 
-  function drawWorm(ctx, type, hx, hy, dir, arch, blink) {
-    const n = type.segs;
+  function drawWorm(ctx, h, x, y, dir, c) {
+    const n = h.segs;
+    const arch = c.arch;
     const sp = 4 - arch;
+    const cy = y - 4;
     const pts = [];
     for (let i = 0; i < n; i++) {
-      const x = Math.round(hx - dir * (n - 1 - i) * sp);
+      const px = Math.round(x - dir * (n - 1 - i) * sp);
       const lift = Math.sin(Math.PI * i / (n - 1)) * arch * 5;
-      pts.push([x, Math.round(hy - lift)]);
+      pts.push([px, Math.round(cy - lift)]);
     }
-    for (const [x, y] of pts) disc(ctx, x, y, 4, OUTLINE);
-    pts.forEach(([x, y], i) => {
-      disc(ctx, x, y, 3, i % 2 ? type.color : type.dark);
+    for (const [px, py] of pts) disc(ctx, px, py, 4, OUTLINE);
+    pts.forEach(([px, py], i) => {
+      disc(ctx, px, py, 3, i % 2 ? h.color : h.dark);
       ctx.fillStyle = "rgba(255,255,255,0.55)";
-      ctx.fillRect(x - 1, y - 3, 2, 1);
+      ctx.fillRect(px - 1, py - 3, 2, 1);
     });
-    const [x, y] = pts[n - 1];
-    disc(ctx, x, y, 3, type.color);
+    const [hx, hy] = pts[n - 1];
+    disc(ctx, hx, hy, 3, h.color);
     ctx.fillStyle = "rgba(255,255,255,0.6)";
-    ctx.fillRect(x - 1, y - 3, 2, 1);
-    // face
+    ctx.fillRect(hx - 1, hy - 3, 2, 1);
     ctx.fillStyle = "#1a0d14";
-    if (blink) ctx.fillRect(dir > 0 ? x + 1 : x - 2, y, 2, 1);
-    else ctx.fillRect(x + dir, y - 1, 1, 2);
+    if (c.blink) ctx.fillRect(dir > 0 ? hx + 1 : hx - 2, hy, 2, 1);
+    else ctx.fillRect(hx + dir, hy - 1, 1, 2);
     ctx.fillStyle = "#ff4f7a";
-    ctx.fillRect(x + dir * 2, y + 1, 1, 1);
-    ctx.fillRect(x - dir, y + 2, 1, 1); // smile
-    drawHat(ctx, type.hat, x, y, dir);
+    ctx.fillRect(hx + dir * 2, hy + 1, 1, 1);
+    drawHat(ctx, h.hat, hx, hy, dir);
   }
 
   function drawHat(ctx, hat, x, y, dir) {
@@ -247,42 +288,147 @@
     }
   }
 
+  function drawSnail(ctx, h, x, y, dir, c) {
+    const f = frame(ctx, x, y, dir);
+    const s = c.step ? 1 : 0; // foot stretch
+    const body = "#c8e6a0", bodyDark = "#9cc46e";
+    // outline pass
+    f.px(-14, -4, 16 + s, 5, OUTLINE);
+    f.px(-3 + s, -8, 5, 5, OUTLINE);
+    f.d(-8, -8, 6, OUTLINE);
+    // foot + head
+    f.px(-13, -3, 14 + s, 3, body);
+    f.px(-13, -1, 14 + s, 1, bodyDark);
+    f.px(-2 + s, -7, 3, 5, body);
+    // eye stalks
+    f.px(0 + s, -11, 1, 4, bodyDark);
+    f.px(-2 + s, -10, 1, 3, bodyDark);
+    f.px(0 + s, -12, 1, 1, c.blink ? OUTLINE : "#000000");
+    f.px(1 + s, -12, 1, 1, "#ffffff");
+    f.px(1 + s, -5, 1, 1, "#ff7aa0"); // cheek
+    // shell with spiral
+    f.d(-8, -8, 5, "#d4823f");
+    f.d(-8, -8, 3, "#9c5426");
+    f.d(-8, -8, 2, "#e8a05a");
+    f.px(-8, -8, 1, 1, "#9c5426");
+    f.px(-10, -12, 2, 1, "#f5c08a");
+  }
+
+  function drawMouse(ctx, h, x, y, dir, c) {
+    const f = frame(ctx, x, y, dir);
+    const fur = "#b08a6e", belly = "#e6cbb3";
+    // outline
+    f.d(-8, -4, 4, OUTLINE);
+    f.d(-4, -4, 4, OUTLINE);
+    f.d(-1, -5, 4, OUTLINE);
+    f.d(-3, -9, 3, OUTLINE);
+    // tail
+    f.px(-13, -3, 2, 1, "#e6889f");
+    f.px(-15, -4, 2, 1, "#e6889f");
+    f.px(-16, -6, 1, 2, "#e6889f");
+    // body
+    f.d(-8, -4, 3, fur);
+    f.d(-4, -4, 3, fur);
+    f.px(-9, -3, 8, 2, belly);
+    f.d(-1, -5, 3, fur);
+    f.px(2, -5, 2, 1, fur);
+    f.px(3, -6, 1, 1, OUTLINE);
+    f.px(4, -5, 1, 1, "#ff9fb8"); // nose
+    // ear
+    f.d(-3, -9, 2, "#ff9fb8");
+    // eye
+    f.px(0, -7, 1, c.blink ? 1 : 2, "#000000");
+    // feet (2 frames)
+    const a = c.step ? 1 : 0;
+    f.px(-9 + a, 0, 2, 1, "#ff9fb8");
+    f.px(-3 - a, 0, 2, 1, "#ff9fb8");
+  }
+
+  function drawHamster(ctx, h, x, y, dir, c) {
+    const f = frame(ctx, x, y, dir);
+    const fur = "#f4a259", cream = "#fff1d6";
+    f.d(-6, -6, 6, OUTLINE);
+    f.d(-7, -12, 2, OUTLINE);
+    f.d(-7, -12, 1, "#ff9fb8");
+    f.d(-6, -6, 5, fur);
+    f.d(-3, -4, 3, cream);
+    f.d(-1, -6, 2, cream);
+    f.px(-9, -10, 3, 1, "#f9c58d"); // shine
+    f.px(-2, -8, 1, c.blink ? 1 : 2, "#000000");
+    f.px(1, -6, 1, 1, "#ff6b8b"); // nose
+    f.px(-1, -4, 2, 1, "#ffb3c1"); // cheek pouch
+    const a = c.step ? 1 : 0;
+    f.px(-3 - a, 0, 2, 1, "#ff9fb8");
+    f.px(-9 + a, 0, 2, 1, "#ff9fb8");
+  }
+
+  function drawBunny(ctx, h, x, y, dir, c) {
+    const f = frame(ctx, x, y, dir);
+    const fur = "#f1f3f5", shade = "#c9ced6";
+    // outline
+    f.d(-6, -5, 5, OUTLINE);
+    f.d(-1, -9, 4, OUTLINE);
+    f.px(-4, -18, 4, 7, OUTLINE);
+    f.px(-1, -17, 3, 6, OUTLINE);
+    f.d(-11, -6, 2, OUTLINE);
+    // ears
+    f.px(-3, -17, 2, 6, fur);
+    f.px(0, -16, 1, 5, fur);
+    f.px(-2, -16, 1, 4, "#ffb3c1");
+    // body + head
+    f.d(-6, -5, 4, fur);
+    f.px(-9, -2, 6, 1, shade);
+    f.d(-1, -9, 3, fur);
+    f.d(-11, -6, 1, "#ffffff");
+    f.px(0, -10, 1, c.blink ? 1 : 2, "#000000");
+    f.px(3, -9, 1, 1, "#ff6b8b");
+    f.px(1, -8, 1, 1, "#ffb3c1");
+    // feet
+    f.px(-8, 0, 3, 1, shade);
+    f.px(-2, -1, 2, 1, shade);
+  }
+
+  const DRAW = { worm: drawWorm, snail: drawSnail, mouse: drawMouse, hamster: drawHamster, bunny: drawBunny };
+
+  // movement style per kind: speed (px/s) + how the body animates
+  const MOVE = {
+    worm:    { speed: 3,  pause: 0 },
+    snail:   { speed: 1.5, pause: 0 },
+    mouse:   { speed: 14, pause: 0.5 },
+    hamster: { speed: 9,  pause: 0.4 },
+    bunny:   { speed: 16, pause: 0.3 },
+  };
+
   // ---------- scene ----------
   const canvas = document.getElementById("scene");
   const ctx = canvas.getContext("2d");
   ctx.imageSmoothingEnabled = false;
   const wrap = document.getElementById("sceneWrap");
 
-  // deterministic pseudo-random for static textures
   let seed = 1337;
   const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
 
   const background = (() => {
     const [c, g] = makeCanvas(W, H);
-    // wall tiles
     for (let y = 0; y < GROUND_Y; y += 8) for (let x = 0; x < W; x += 8) {
       g.fillStyle = ((x + y) / 8) % 2 ? "#2e2350" : "#33285a";
       g.fillRect(x, y, 8, 8);
     }
-    // ground
     for (let y = GROUND_Y; y < H; y++) for (let x = 0; x < W; x++) {
       const r = rnd();
       g.fillStyle = r < 0.08 ? "#4a2f22" : r < 0.14 ? "#7a5236" : "#5e3d2a";
       g.fillRect(x, y, 1, 1);
     }
-    // pebbles
     for (let i = 0; i < 18; i++) {
       const x = Math.floor(rnd() * W), y = GROUND_Y + 6 + Math.floor(rnd() * (H - GROUND_Y - 8));
       g.fillStyle = "#8a6a52"; g.fillRect(x, y, 2, 1);
       g.fillStyle = "#3d271b"; g.fillRect(x, y + 1, 2, 1);
     }
-    // grass edge
     for (let x = 0; x < W; x++) {
       g.fillStyle = "#3f9c35"; g.fillRect(x, GROUND_Y, 1, 3);
       g.fillStyle = "#2b7a2b"; g.fillRect(x, GROUND_Y + 3, 1, 1);
       if (rnd() < 0.35) { g.fillStyle = "#5fcf4a"; g.fillRect(x, GROUND_Y - 1 - Math.floor(rnd() * 2), 1, 2); }
     }
-    // plate under the cheese
     g.fillStyle = "#1b1430"; g.fillRect(28, 120, 104, 6);
     g.fillStyle = "#dfe6f0"; g.fillRect(30, 116, 100, 5);
     g.fillStyle = "#ffffff"; g.fillRect(34, 116, 92, 2);
@@ -295,24 +441,27 @@
   let cheeseY = CHEESE_BASE_Y;
   let squash = 0;
 
-  const worms = [];
+  const critters = [];
   const particles = [];
 
-  function addWormSprite(type) {
-    if (worms.length >= MAX_VISIBLE_WORMS) return;
-    if (worms.filter(w => w.type === type).length >= MAX_VISIBLE_PER_TYPE) return;
-    worms.push({
-      type,
-      x: 10 + Math.random() * (W - 20),
-      y: GROUND_Y + 12 + Math.floor(Math.random() * (H - GROUND_Y - 16)),
+  function addCritter(h) {
+    if (critters.length >= MAX_VISIBLE) return;
+    if (critters.filter(c => c.h === h).length >= MAX_VISIBLE_PER_TYPE) return;
+    critters.push({
+      h,
+      x: 16 + Math.random() * (W - 32),
+      y: GROUND_Y + 14 + Math.floor(Math.random() * (H - GROUND_Y - 16)),
       dir: Math.random() < 0.5 ? -1 : 1,
       phase: Math.random() * Math.PI * 2,
-      speed: 2.5 + Math.random() * 2,
+      rate: 0.8 + Math.random() * 0.5,
+      rest: 0,
       hop: 0,
       work: 1 + Math.random() * 4,
-      blink: Math.random() * 4,
+      blinkT: Math.random() * 4,
+      // render state
+      arch: 0, step: false, blink: false, lift: 0,
     });
-    worms.sort((a, b) => a.y - b.y);
+    critters.sort((a, b) => a.y - b.y);
   }
 
   function spawnCrumbs(x, y, count) {
@@ -325,10 +474,7 @@
       });
     }
   }
-
-  function spawnCoin(x, y) {
-    particles.push({ kind: "coin", x, y, vx: 0, vy: -18, life: 1.0 });
-  }
+  const spawnCoin = (x, y) => particles.push({ kind: "coin", x, y, vx: 0, vy: -18, life: 1.0 });
 
   function floatText(clientX, clientY, text) {
     const r = wrap.getBoundingClientRect();
@@ -351,28 +497,31 @@
     const [sx, sy] = toScene(e);
     if (cheeseAlphaAt(sx - CHEESE_X, sy - cheeseY) === 0) return;
     e.preventDefault();
-    state.coins += 1;
-    state.total += 1;
+    const gain = clickPower();
+    state.coins += gain;
+    state.total += gain;
     squash = 1;
     spawnCrumbs(sx, sy, 5);
-    floatText(e.clientX, e.clientY, "+1");
+    floatText(e.clientX, e.clientY, "+" + fmt(gain, true));
     updateUI();
   });
   canvas.addEventListener("contextmenu", e => e.preventDefault());
 
-  // ---------- shop ----------
+  // ---------- shop UI ----------
   const shopEl = document.getElementById("shop");
+  const upEl = document.getElementById("upgrades");
+  const upSection = document.getElementById("upgradeSection");
   const coinsEl = document.getElementById("coins");
   const cpsEl = document.getElementById("cps");
+  const perClickEl = document.getElementById("perClick");
   const totalEl = document.getElementById("total");
   const items = [];
+  const upItems = [];
 
-  WORMS.forEach((w, i) => {
+  function makeItem(icon, onClick) {
     const btn = document.createElement("button");
     btn.type = "button";
     btn.className = "item";
-    const [icon, ictx] = makeCanvas(32, 24);
-    drawWorm(ictx, w, w.segs > 5 ? 27 : 25, 16, 1, 0.5, false);
     const info = document.createElement("div");
     const name = document.createElement("div"); name.className = "name";
     const desc = document.createElement("div"); desc.className = "desc";
@@ -380,17 +529,47 @@
     info.append(name, desc, cost);
     const owned = document.createElement("div"); owned.className = "owned";
     btn.append(icon, info, owned);
-    btn.addEventListener("click", () => buy(w));
-    shopEl.appendChild(btn);
-    items.push({ w, i, btn, name, desc, cost, owned });
+    btn.addEventListener("click", onClick);
+    return { btn, name, desc, cost, owned };
+  }
+
+  const iconState = { arch: 0.5, step: false, blink: false };
+  HELPERS.forEach((h, i) => {
+    const [icon, ictx] = makeCanvas(32, 24);
+    const x = h.kind === "worm" ? 25 : h.kind === "bunny" ? 21 : 22;
+    DRAW[h.kind](ictx, h, x, 21, 1, iconState);
+    const it = makeItem(icon, () => buyHelper(h));
+    shopEl.appendChild(it.btn);
+    items.push({ h, i, ...it });
   });
 
-  function buy(w) {
-    const c = costOf(w);
+  UPGRADES.forEach(u => {
+    const [icon, ictx] = makeCanvas(32, 24);
+    ictx.drawImage(spriteFromStrings(RAT, RAT_PAL), 6, 8);
+    disc(ictx, 26, 5, 4, OUTLINE);
+    disc(ictx, 26, 5, 3, u.badge);
+    ictx.fillStyle = OUTLINE;
+    ictx.fillRect(26, 3, 1, 5); ictx.fillRect(24, 5, 5, 1); // "+" badge
+    const it = makeItem(icon, () => buyUpgrade(u));
+    it.btn.classList.add("upgrade");
+    upEl.appendChild(it.btn);
+    upItems.push({ u, ...it });
+  });
+
+  function buyHelper(h) {
+    const c = costOf(h);
     if (state.coins < c) return;
     state.coins -= c;
-    state.owned[w.id]++;
-    addWormSprite(w);
+    state.owned[h.id]++;
+    addCritter(h);
+    updateUI();
+    save();
+  }
+
+  function buyUpgrade(u) {
+    if (has(u.id) || state.coins < u.cost) return;
+    state.coins -= u.cost;
+    state.upgrades.push(u.id);
     updateUI();
     save();
   }
@@ -398,32 +577,49 @@
   function updateUI() {
     coinsEl.textContent = fmt(state.coins);
     cpsEl.textContent = fmt(cps(), true);
+    perClickEl.textContent = fmt(clickPower(), true);
     totalEl.textContent = fmt(state.total);
     document.title = fmt(state.coins) + " cheese coins - Cheese Clicker";
+
     let prevUnlocked = true;
     for (const it of items) {
-      const { w, btn } = it;
-      const unlocked = it.i === 0 || state.owned[w.id] > 0 || state.total >= w.cost * 0.4;
-      const visible = unlocked || prevUnlocked;
-      btn.hidden = !visible;
+      const { h, btn } = it;
+      const unlocked = it.i === 0 || state.owned[h.id] > 0 || state.total >= h.cost * 0.4;
+      btn.hidden = !(unlocked || prevUnlocked);
       btn.classList.toggle("locked", !unlocked);
-      const c = costOf(w);
+      const c = costOf(h);
       const afford = state.coins >= c;
       btn.disabled = !unlocked || !afford;
       btn.classList.toggle("affordable", unlocked && afford);
-      it.name.textContent = unlocked ? w.name : "???";
-      it.desc.textContent = unlocked ? `${w.desc} +${fmt(w.cps, true)}/s each` : "keep clicking...";
+      it.name.textContent = unlocked ? h.name : "???";
+      it.desc.textContent = unlocked ? `${h.desc} +${fmt(h.cps, true)}/s each` : "keep clicking...";
       it.cost.textContent = "🧀 " + fmt(c);
-      it.owned.textContent = state.owned[w.id] || "";
+      it.owned.textContent = state.owned[h.id] || "";
       prevUnlocked = unlocked;
     }
+
+    let anyUp = false;
+    for (const it of upItems) {
+      const { u, btn } = it;
+      const show = !has(u.id) && state.total >= u.cost * 0.3;
+      btn.hidden = !show;
+      if (!show) continue;
+      anyUp = true;
+      const afford = state.coins >= u.cost;
+      btn.disabled = !afford;
+      btn.classList.toggle("affordable", afford);
+      it.name.textContent = u.name;
+      it.desc.textContent = u.desc;
+      it.cost.textContent = "🧀 " + fmt(u.cost);
+    }
+    upSection.hidden = !anyUp;
   }
 
   document.getElementById("reset").addEventListener("click", () => {
-    if (!confirm("Reset ALL progress? Your worms will go home.")) return;
-    state.coins = 0; state.total = 0;
-    WORMS.forEach(w => (state.owned[w.id] = 0));
-    worms.length = 0;
+    if (!confirm("Reset ALL progress? Your helpers will go home.")) return;
+    state.coins = 0; state.total = 0; state.upgrades = [];
+    HELPERS.forEach(h => (state.owned[h.id] = 0));
+    critters.length = 0;
     save();
     updateUI();
   });
@@ -433,39 +629,55 @@
   let t = 0;
   let uiTimer = 0, saveTimer = 0;
 
-  function frame(now) {
+  function updateCritter(c, dt) {
+    const kind = c.h.kind, m = MOVE[kind];
+    if (c.rest > 0) {
+      c.rest -= dt;
+    } else {
+      c.phase += dt * 6 * c.rate;
+      let v = m.speed * c.rate;
+      if (kind === "worm") {
+        c.arch = Math.max(0, Math.sin(c.phase * 0.6));
+        v *= c.arch > 0 ? 1.4 : 0.15;
+      } else if (kind === "bunny") {
+        c.lift = Math.max(0, Math.sin(c.phase * 0.7)) * 7;
+        v *= c.lift > 0 ? 1 : 0;
+      } else if (kind === "hamster") {
+        c.lift = Math.abs(Math.sin(c.phase * 1.2)) * 1.5;
+      }
+      c.step = Math.sin(c.phase * 1.5) > 0;
+      c.x += c.dir * v * dt;
+      if (m.pause && Math.random() < dt * m.pause) c.rest = 0.4 + Math.random() * 1.2;
+    }
+    if (c.x < 16) { c.x = 16; c.dir = 1; }
+    if (c.x > W - 16) { c.x = W - 16; c.dir = -1; }
+
+    c.work -= dt;
+    if (c.work <= 0) {
+      c.work = 2 + Math.random() * 4;
+      c.hop = 1;
+      spawnCoin(c.x, c.y - 14);
+    }
+    c.hop = Math.max(0, c.hop - dt * 3);
+    c.blinkT -= dt;
+    if (c.blinkT < -0.15) c.blinkT = 2 + Math.random() * 4;
+    c.blink = c.blinkT < 0;
+  }
+
+  function tick(now) {
     const dt = Math.min(0.1, (now - last) / 1000);
     last = now;
     t += dt;
 
-    // income from worms
     const gain = cps() * dt;
     state.coins += gain;
     state.total += gain;
 
-    // cheese bob + squash
     cheeseY = CHEESE_BASE_Y + Math.round(Math.sin(t * 1.6) * 2);
     squash = Math.max(0, squash - dt * 8);
 
-    // worms
-    for (const w of worms) {
-      w.phase += dt * w.speed;
-      const arch = Math.max(0, Math.sin(w.phase));
-      w.x += w.dir * dt * (arch > 0 ? 4 : 0.5) * (w.type.segs > 5 ? 1.2 : 1);
-      if (w.x < 12) { w.x = 12; w.dir = 1; }
-      if (w.x > W - 12) { w.x = W - 12; w.dir = -1; }
-      w.work -= dt;
-      if (w.work <= 0) {
-        w.work = 2 + Math.random() * 4;
-        w.hop = 1;
-        spawnCoin(w.x, w.y - 6);
-      }
-      w.hop = Math.max(0, w.hop - dt * 3);
-      w.blink -= dt;
-      if (w.blink < -0.15) w.blink = 2 + Math.random() * 4;
-    }
+    for (const c of critters) updateCritter(c, dt);
 
-    // particles
     for (let i = particles.length - 1; i >= 0; i--) {
       const p = particles[i];
       p.life -= dt;
@@ -479,36 +691,28 @@
     uiTimer += dt; saveTimer += dt;
     if (uiTimer > 0.1) { uiTimer = 0; updateUI(); }
     if (saveTimer > 5) { saveTimer = 0; save(); }
-    requestAnimationFrame(frame);
+    requestAnimationFrame(tick);
   }
 
   function draw() {
     ctx.drawImage(background, 0, 0);
 
-    // glow behind cheese
     const pulse = 0.5 + 0.5 * Math.sin(t * 2);
-    ctx.fillStyle = `rgba(255, 220, 120, ${0.06 + pulse * 0.05})`;
-    disc(ctx, 80, cheeseY + 40, 48, ctx.fillStyle);
-    ctx.fillStyle = `rgba(255, 220, 120, ${0.06 + pulse * 0.04})`;
-    disc(ctx, 80, cheeseY + 40, 38, ctx.fillStyle);
+    disc(ctx, 80, cheeseY + 40, 48, `rgba(255, 220, 120, ${0.06 + pulse * 0.05})`);
+    disc(ctx, 80, cheeseY + 40, 38, `rgba(255, 220, 120, ${0.06 + pulse * 0.04})`);
 
-    // cheese (with squash on click)
     if (squash > 0) {
-      const s = 1 - squash * 0.06;
-      const w = Math.round(CHEESE_W * (1 + squash * 0.04)), h = Math.round(CHEESE_H * s);
+      const w = Math.round(CHEESE_W * (1 + squash * 0.04)), h = Math.round(CHEESE_H * (1 - squash * 0.06));
       ctx.drawImage(cheese.canvas, Math.round(80 - w / 2), cheeseY + (CHEESE_H - h), w, h);
     } else {
       ctx.drawImage(cheese.canvas, CHEESE_X, cheeseY);
     }
 
-    // worms
-    for (const w of worms) {
-      const arch = Math.max(0, Math.sin(w.phase));
-      const hopY = Math.round(Math.sin(w.hop * Math.PI) * 4);
-      drawWorm(ctx, w.type, Math.round(w.x), w.y - hopY, w.dir, arch, w.blink < 0);
+    for (const c of critters) {
+      const hopY = Math.round(Math.sin(c.hop * Math.PI) * 4 + c.lift);
+      DRAW[c.h.kind](ctx, c.h, Math.round(c.x), c.y - hopY, c.dir, c);
     }
 
-    // particles
     for (const p of particles) {
       const x = Math.round(p.x), y = Math.round(p.y);
       if (p.kind === "crumb") {
@@ -525,10 +729,10 @@
 
   // ---------- boot ----------
   load();
-  WORMS.forEach(w => { for (let i = 0; i < state.owned[w.id]; i++) addWormSprite(w); });
+  HELPERS.forEach(h => { for (let i = 0; i < state.owned[h.id]; i++) addCritter(h); });
   setupRatCursor();
   updateUI();
   window.addEventListener("beforeunload", save);
   document.addEventListener("visibilitychange", () => { if (document.hidden) save(); });
-  requestAnimationFrame(frame);
+  requestAnimationFrame(tick);
 })();
