@@ -3,7 +3,8 @@
 
   // ---------- config ----------
   const W = 160, H = 176;           // logical pixel size of the scene
-  const GROUND_Y = 132;
+  const GROUND_Y = 92;      // horizon: wall above, dirt floor below
+  const FLOOR_TOP = 104, FLOOR_BOTTOM = 172;
   const SAVE_KEY = "cheeseClicker.v1";
   const MAX_VISIBLE = 60;
   const MAX_VISIBLE_PER_TYPE = 10;
@@ -400,6 +401,13 @@
   };
 
   // ---------- scene ----------
+  // the cheese sits on the dirt; its bottom edge is at CHEESE_BASE
+  const CHEESE_X = Math.floor((W - CHEESE_W) / 2);
+  const CHEESE_BASE = 142;
+  const cheeseY = CHEESE_BASE - 72;
+  // where critters stand to nibble (head pokes 2px into the cheese)
+  const EAT_LEFT_X = CHEESE_X + 8, EAT_RIGHT_X = CHEESE_X + 80;
+  const EAT_Y_MIN = 128, EAT_Y_MAX = 152;
   const canvas = document.getElementById("scene");
   const ctx = canvas.getContext("2d");
   ctx.imageSmoothingEnabled = false;
@@ -429,16 +437,13 @@
       g.fillStyle = "#2b7a2b"; g.fillRect(x, GROUND_Y + 3, 1, 1);
       if (rnd() < 0.35) { g.fillStyle = "#5fcf4a"; g.fillRect(x, GROUND_Y - 1 - Math.floor(rnd() * 2), 1, 2); }
     }
-    g.fillStyle = "#1b1430"; g.fillRect(28, 120, 104, 6);
-    g.fillStyle = "#dfe6f0"; g.fillRect(30, 116, 100, 5);
-    g.fillStyle = "#ffffff"; g.fillRect(34, 116, 92, 2);
-    g.fillStyle = "#9aa6b8"; g.fillRect(36, 121, 88, 2);
+    // shadow where the cheese sits in the dirt
+    for (let y = -5; y <= 5; y++) for (let x = -46; x <= 46; x++) {
+      if ((x * x) / (46 * 46) + (y * y) / 25 <= 1) { g.fillStyle = "#3d271b"; g.fillRect(80 + x, CHEESE_BASE + y - 1, 1, 1); }
+    }
     return c;
   })();
 
-  const CHEESE_X = Math.floor((W - CHEESE_W) / 2);
-  const CHEESE_BASE_Y = 42;
-  let cheeseY = CHEESE_BASE_Y;
   let squash = 0;
 
   const critters = [];
@@ -450,7 +455,8 @@
     critters.push({
       h,
       x: 16 + Math.random() * (W - 32),
-      y: GROUND_Y + 14 + Math.floor(Math.random() * (H - GROUND_Y - 16)),
+      y: FLOOR_TOP + Math.random() * (FLOOR_BOTTOM - FLOOR_TOP),
+      mode: "go", tx: 0, ty: 0, eatT: 0, nib: 0,
       dir: Math.random() < 0.5 ? -1 : 1,
       phase: Math.random() * Math.PI * 2,
       rate: 0.8 + Math.random() * 0.5,
@@ -461,15 +467,38 @@
       // render state
       arch: 0, step: false, blink: false, lift: 0,
     });
-    critters.sort((a, b) => a.y - b.y);
+    pickTarget(critters[critters.length - 1]);
   }
 
-  function spawnCrumbs(x, y, count) {
+  // decide where to go next: usually the cheese, sometimes a stroll
+  function pickTarget(c) {
+    c.mode = "go";
+    const r = Math.random();
+    if (r < 0.45) {
+      // nibble the bottom of the front face
+      c.tx = CHEESE_X + 14 + Math.random() * (CHEESE_W - 28);
+      c.ty = CHEESE_BASE + 1 + Math.random() * 8;
+      c.eatDir = Math.random() < 0.5 ? 1 : -1;
+    } else if (r < 0.75) {
+      const left = c.x < 80;
+      c.tx = left ? EAT_LEFT_X : EAT_RIGHT_X;
+      c.ty = EAT_Y_MIN + Math.random() * (EAT_Y_MAX - EAT_Y_MIN);
+      c.eatDir = left ? 1 : -1;
+    } else {
+      c.tx = 16 + Math.random() * (W - 32);
+      c.ty = FLOOR_TOP + Math.random() * (FLOOR_BOTTOM - FLOOR_TOP);
+      // don't stop inside the cheese
+      if (c.tx > CHEESE_X && c.tx < CHEESE_X + CHEESE_W && c.ty > 118 && c.ty < 150) c.ty = 156 + Math.random() * 14;
+      c.eatDir = 0;
+    }
+  }
+
+  function spawnCrumbs(x, y, count, power = 1) {
     const cols = ["#ffc93c", "#ffe27a", "#e8a417"];
     for (let i = 0; i < count; i++) {
       particles.push({
         kind: "crumb", x, y,
-        vx: (Math.random() - 0.5) * 60, vy: -30 - Math.random() * 50,
+        vx: (Math.random() - 0.5) * 60 * power, vy: (-30 - Math.random() * 50) * power,
         life: 0.8 + Math.random() * 0.4, col: cols[i % cols.length],
       });
     }
@@ -631,37 +660,67 @@
 
   function updateCritter(c, dt) {
     const kind = c.h.kind, m = MOVE[kind];
-    if (c.rest > 0) {
+    c.lift = 0;
+    if (c.mode === "eat") {
+      // nibble nibble
+      c.nib = Math.sin(t * 14 * c.rate) > 0 ? 1 : 0;
+      c.arch = kind === "worm" ? 0.25 + 0.25 * Math.sin(t * 10) : 0;
+      c.step = false;
+      c.eatT -= dt;
+      if (Math.random() < dt * 2) spawnCrumbs(c.x + c.dir * 2, c.y - 6, 1, 0.4);
+      c.work -= dt;
+      if (c.work <= 0) {
+        c.work = 1.5 + Math.random() * 2.5;
+        c.hop = 1;
+        spawnCoin(c.x - c.dir * 4, c.y - 16);
+      }
+      if (c.eatT <= 0) pickTarget(c);
+    } else if (c.rest > 0) {
       c.rest -= dt;
+      c.nib = 0;
     } else {
+      c.nib = 0;
       c.phase += dt * 6 * c.rate;
       let v = m.speed * c.rate;
       if (kind === "worm") {
         c.arch = Math.max(0, Math.sin(c.phase * 0.6));
         v *= c.arch > 0 ? 1.4 : 0.15;
+        v *= 2; // worms hurry a bit so they reach the cheese
       } else if (kind === "bunny") {
         c.lift = Math.max(0, Math.sin(c.phase * 0.7)) * 7;
         v *= c.lift > 0 ? 1 : 0;
       } else if (kind === "hamster") {
         c.lift = Math.abs(Math.sin(c.phase * 1.2)) * 1.5;
+      } else if (kind === "snail") {
+        v *= 2;
       }
       c.step = Math.sin(c.phase * 1.5) > 0;
-      c.x += c.dir * v * dt;
-      if (m.pause && Math.random() < dt * m.pause) c.rest = 0.4 + Math.random() * 1.2;
+      const dx = c.tx - c.x, dy = c.ty - c.y;
+      const dist = Math.hypot(dx, dy);
+      if (dist < 1.5) {
+        if (c.eatDir) {
+          c.mode = "eat";
+          c.dir = c.eatDir;
+          c.eatT = 3 + Math.random() * 5;
+          c.x = c.tx; c.y = c.ty;
+        } else {
+          c.rest = 0.3 + Math.random();
+          pickTarget(c);
+        }
+      } else {
+        if (Math.abs(dx) > 1) c.dir = dx > 0 ? 1 : -1;
+        const stepLen = Math.min(dist, v * dt);
+        c.x += dx / dist * stepLen;
+        c.y += dy / dist * stepLen;
+        if (m.pause && Math.random() < dt * m.pause * 0.5) c.rest = 0.3 + Math.random() * 0.8;
+      }
     }
-    if (c.x < 16) { c.x = 16; c.dir = 1; }
-    if (c.x > W - 16) { c.x = W - 16; c.dir = -1; }
-
-    c.work -= dt;
-    if (c.work <= 0) {
-      c.work = 2 + Math.random() * 4;
-      c.hop = 1;
-      spawnCoin(c.x, c.y - 14);
-    }
+    c.x = Math.max(16, Math.min(W - 16, c.x));
+    c.y = Math.max(FLOOR_TOP, Math.min(FLOOR_BOTTOM, c.y));
     c.hop = Math.max(0, c.hop - dt * 3);
     c.blinkT -= dt;
     if (c.blinkT < -0.15) c.blinkT = 2 + Math.random() * 4;
-    c.blink = c.blinkT < 0;
+    c.blink = c.blinkT < 0 || c.mode === "eat" && c.nib === 1;
   }
 
   function tick(now) {
@@ -673,7 +732,6 @@
     state.coins += gain;
     state.total += gain;
 
-    cheeseY = CHEESE_BASE_Y + Math.round(Math.sin(t * 1.6) * 2);
     squash = Math.max(0, squash - dt * 8);
 
     for (const c of critters) updateCritter(c, dt);
@@ -697,9 +755,13 @@
   function draw() {
     ctx.drawImage(background, 0, 0);
 
-    const pulse = 0.5 + 0.5 * Math.sin(t * 2);
-    disc(ctx, 80, cheeseY + 40, 48, `rgba(255, 220, 120, ${0.06 + pulse * 0.05})`);
-    disc(ctx, 80, cheeseY + 40, 38, `rgba(255, 220, 120, ${0.06 + pulse * 0.04})`);
+
+    critters.sort((a, b) => a.y - b.y);
+    const drawCritter = c => {
+      const hopY = Math.round(Math.sin(c.hop * Math.PI) * 4 + c.lift);
+      DRAW[c.h.kind](ctx, c.h, Math.round(c.x) + c.dir * c.nib, Math.round(c.y) - hopY, c.dir, c);
+    };
+    for (const c of critters) if (c.y < CHEESE_BASE) drawCritter(c);
 
     if (squash > 0) {
       const w = Math.round(CHEESE_W * (1 + squash * 0.04)), h = Math.round(CHEESE_H * (1 - squash * 0.06));
@@ -708,10 +770,7 @@
       ctx.drawImage(cheese.canvas, CHEESE_X, cheeseY);
     }
 
-    for (const c of critters) {
-      const hopY = Math.round(Math.sin(c.hop * Math.PI) * 4 + c.lift);
-      DRAW[c.h.kind](ctx, c.h, Math.round(c.x), c.y - hopY, c.dir, c);
-    }
+    for (const c of critters) if (c.y >= CHEESE_BASE) drawCritter(c);
 
     for (const p of particles) {
       const x = Math.round(p.x), y = Math.round(p.y);
