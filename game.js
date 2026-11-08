@@ -673,8 +673,17 @@
     upSection.hidden = !anyUp;
   }
 
-  document.getElementById("reset").addEventListener("click", () => {
-    if (!confirm("Reset ALL progress? Your helpers will go home.")) return;
+  const resetBtn = document.getElementById("reset");
+  let resetArmed = null;
+  resetBtn.addEventListener("click", () => {
+    // first click asks, second click (within 3s) resets
+    if (!resetArmed) {
+      resetBtn.textContent = "sure? click again";
+      resetArmed = setTimeout(() => { resetArmed = null; resetBtn.textContent = "reset"; }, 3000);
+      return;
+    }
+    clearTimeout(resetArmed); resetArmed = null;
+    resetBtn.textContent = "reset";
     state.coins = 0; state.total = 0; state.upgrades = [];
     HELPERS.forEach(h => (state.owned[h.id] = 0));
     critters.length = 0;
