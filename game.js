@@ -418,9 +418,27 @@
 
   const background = (() => {
     const [c, g] = makeCanvas(W, H);
-    for (let y = 0; y < GROUND_Y; y += 8) for (let x = 0; x < W; x += 8) {
-      g.fillStyle = ((x + y) / 8) % 2 ? "#2e2350" : "#33285a";
-      g.fillRect(x, y, 8, 8);
+    // sky: pixel bands with dithered edges
+    const bands = ["#4aa3f0", "#5cb2f5", "#72c0f8", "#8bcefa", "#a6dbfc", "#c3e8fd"];
+    const bh = GROUND_Y / bands.length;
+    for (let y = 0; y < GROUND_Y; y++) {
+      const i = Math.min(bands.length - 1, Math.floor(y / bh));
+      const edge = y - i * bh >= bh - 2 && i < bands.length - 1;
+      for (let x = 0; x < W; x++) {
+        g.fillStyle = edge && (x + y) % 2 === 0 ? bands[i + 1] : bands[i];
+        g.fillRect(x, y, 1, 1);
+      }
+    }
+    // sun
+    disc(g, 132, 20, 9, "#ffe066");
+    disc(g, 132, 20, 7, "#fff3a0");
+    g.fillStyle = "#ffffff"; g.fillRect(128, 15, 3, 2);
+    // far hills
+    for (let x = 0; x < W; x++) {
+      const h1 = Math.round(10 + Math.sin(x / 17) * 5 + Math.sin(x / 7) * 2);
+      g.fillStyle = "#7cc47a"; g.fillRect(x, GROUND_Y - h1, 1, h1);
+      const h2 = Math.round(5 + Math.sin(x / 11 + 2) * 3);
+      g.fillStyle = "#5aae55"; g.fillRect(x, GROUND_Y - h2, 1, h2);
     }
     for (let y = GROUND_Y; y < H; y++) for (let x = 0; x < W; x++) {
       const r = rnd();
@@ -445,6 +463,17 @@
   })();
 
   let squash = 0;
+  const clouds = [
+    { x: 10, y: 14, s: 1.0, v: 2.0 },
+    { x: 80, y: 34, s: 0.8, v: 1.4 },
+    { x: 140, y: 52, s: 0.6, v: 1.0 },
+  ];
+  function drawCloud(cx, cy, k) {
+    const r = Math.round(5 * k);
+    const parts = [[0, 0, r], [r + 1, -Math.round(r * 0.6), r + 1], [2 * r + 2, 0, r], [r + 1, 1, r]];
+    for (const [dx, dy, rr] of parts) disc(ctx, cx + dx, cy + dy, rr, "#dbeefa");
+    for (const [dx, dy, rr] of parts) disc(ctx, cx + dx, cy + dy - 1, rr, "#ffffff");
+  }
 
   const critters = [];
   const particles = [];
@@ -755,6 +784,11 @@
   function draw() {
     ctx.drawImage(background, 0, 0);
 
+
+    for (const c of clouds) {
+      const x = ((c.x + t * c.v) % (W + 40)) - 30;
+      drawCloud(Math.round(x), c.y, c.s);
+    }
 
     critters.sort((a, b) => a.y - b.y);
     const drawCritter = c => {
