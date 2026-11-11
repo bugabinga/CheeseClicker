@@ -33,7 +33,24 @@
     { id: "golden",  name: "Golden Teeth", desc: "clicks x2",                    cost: 50000,   mult: 2, badge: "#fab005" },
     { id: "fever",   name: "Cheese Fever", desc: "clicks also give 2% of coins/sec", cost: 300000, pct: 0.02, badge: "#ff8fab" },
     { id: "super",   name: "Super Rat",    desc: "clicks x3",                    cost: 4000000, mult: 3, badge: "#74c0fc" },
+    { id: "eyes",    name: "Sharp Eyes",     desc: "crit spots show up 2x more often", cost: 1500,   badge: "#ff4d4d" },
+    { id: "claws",   name: "Crit Claws",     desc: "crits x2 stronger",              cost: 25000,  badge: "#e03131" },
+    { id: "whiskers",name: "Lucky Whiskers", desc: "golden cheese 2x more often",    cost: 7777,   badge: "#ffd43b" },
+    { id: "tail",    name: "Combo Tail",     desc: "max combo bonus x3 -> x5",       cost: 60000,  badge: "#ff922b" },
   ];
+
+  UPGRADES.sort((a, b) => a.cost - b.cost);
+
+  // ---------- special clicks ----------
+  const CRIT_SPOT_MULT = 10;     // hitting a crit spot
+  const LUCKY_CRIT_CHANCE = 0.04, LUCKY_CRIT_MULT = 3;
+  const COMBO_WINDOW = 1.0;      // seconds between clicks to keep a combo
+  const GOLDEN_EFFECTS = [
+    { id: "lucky",  name: "LUCKY!",        weight: 45 },
+    { id: "frenzy", name: "FRENZY",        weight: 40, secs: 77, cpsMult: 7,   label: "helpers x7" },
+    { id: "cfrenzy",name: "CLICK FRENZY",  weight: 15, secs: 13, clickMult: 77, label: "clicks x77" },
+  ];
+  const buffs = []; // { id, name, label, until, cpsMult, clickMult, secs }
 
   // ---------- state ----------
   const state = { coins: 0, total: 0, owned: {}, upgrades: [] };
@@ -61,7 +78,9 @@
 
   const has = id => state.upgrades.includes(id);
   const costOf = h => Math.ceil(h.cost * Math.pow(COST_GROWTH, state.owned[h.id]));
-  const cps = () => HELPERS.reduce((s, h) => s + h.cps * state.owned[h.id], 0);
+  const baseCps = () => HELPERS.reduce((s, h) => s + h.cps * state.owned[h.id], 0);
+  const buffMult = key => buffs.reduce((m, b) => m * (b[key] || 1), 1);
+  const cps = () => baseCps() * buffMult("cpsMult");
   function clickPower() {
     let add = 1, mult = 1, pct = 0;
     for (const u of UPGRADES) if (has(u.id)) {
@@ -69,7 +88,7 @@
       if (u.mult) mult *= u.mult;
       if (u.pct) pct += u.pct;
     }
-    return add * mult + cps() * pct;
+    return (add * mult + cps() * pct) * buffMult("clickMult");
   }
 
   function fmt(n, decimals = false) {
@@ -534,15 +553,145 @@
   }
   const spawnCoin = (x, y) => particles.push({ kind: "coin", x, y, vx: 0, vy: -18, life: 1.0 });
 
-  function floatText(clientX, clientY, text) {
+  function floatText(clientX, clientY, text, kind = "") {
     const r = wrap.getBoundingClientRect();
     const el = document.createElement("div");
-    el.className = "float";
+    el.className = "float" + (kind ? " " + kind : "");
     el.textContent = text;
     el.style.left = (clientX - r.left) + "px";
     el.style.top = (clientY - r.top) + "px";
     el.addEventListener("animationend", () => el.remove());
     wrap.appendChild(el);
+  }
+
+  // ---------- crit spots & golden cheese ----------
+  let critSpot = null;          // { x, y, life, max } in cheese-local pixels
+  const critSpotDelay = () => (has("eyes") ? 2 : 4) + Math.random() * (has("eyes") ? 3 : 6);
+  let nextCritSpot = 3;
+
+  function spawnCritSpot() {
+    for (let tries = 0; tries < 50; tries++) {
+      const x = 12 + Math.floor(Math.random() * (CHEESE_W - 24));
+      const y = 12 + Math.floor(Math.random() * (CHEESE_H - 18));
+      // fully inside the cheese
+      if (cheeseAlphaAt(x, y) && cheeseAlphaAt(x - 4, y) && cheeseAlphaAt(x + 4, y) && cheeseAlphaAt(x, y - 4) && cheeseAlphaAt(x, y + 4)) {
+        const max = 2.5;
+        critSpot = { x, y, life: max, max };
+        return;
+      }
+    }
+  }
+
+  let golden = null;            // { x, y, life, max }
+  const goldenDelay = () => (40 + Math.random() * 80) * (has("whiskers") ? 0.5 : 1);
+  let nextGolden = 25 + Math.random() * 20; // first one comes fairly soon
+
+  function spawnGolden() {
+    let x, y;
+    do {
+      x = 20 + Math.random() * (W - 40);
+      y = 20 + Math.random() * (H - 40);
+    } while (x > CHEESE_X - 14 && x < CHEESE_X + CHEESE_W + 14 && y > cheeseY - 14 && y < CHEESE_BASE + 14);
+    const max = has("whiskers") ? 18 : 13;
+    golden = { x, y, life: max, max };
+  }
+
+  function clickGolden(e) {
+    golden = null;
+    nextGolden = goldenDelay();
+    const pool = GOLDEN_EFFECTS.filter(g => !(g.cpsMult && baseCps() === 0));
+    let r = Math.random() * pool.reduce((s, g) => s + g.weight, 0);
+    const fx = pool.find(g => (r -= g.weight) < 0) || pool[0];
+    // show the message in the middle of the scene so it never gets cut off
+    const rr = canvas.getBoundingClientRect();
+    e = { clientX: rr.left + rr.width / 2, clientY: rr.top + rr.height * 0.3 };
+    flash("gold");
+    if (fx.id === "lucky") {
+      const gain = Math.max(clickPower() * 30 + 50, Math.min(state.coins * 0.15, cps() * 900));
+      earn(gain);
+      floatText(e.clientX, e.clientY, "LUCKY! +" + fmt(gain), "gold");
+    } else {
+      // same buff again just refreshes its timer
+      const old = buffs.findIndex(b => b.id === fx.id);
+      if (old >= 0) buffs.splice(old, 1);
+      buffs.push({ id: fx.id, name: fx.name, label: fx.label, secs: fx.secs, until: t + fx.secs, cpsMult: fx.cpsMult, clickMult: fx.clickMult });
+      floatText(e.clientX, e.clientY, fx.name + "! " + fx.label, "gold");
+    }
+    updateUI();
+  }
+
+  const flashEl = document.getElementById("flash");
+  function flash(kind) {
+    flashEl.className = "";
+    void flashEl.offsetWidth; // restart animation
+    flashEl.className = "flash-" + kind;
+  }
+
+  const GOLD_PAL = { o: "#7a4a0a", Y: "#fff3a0", G: "#ffd43b", h: "#e0a800", D: "#d4a017" };
+  const goldenSprite = spriteFromStrings([
+    "..........oo....",
+    "........ooYYo...",
+    "......ooYYYYo...",
+    "....ooYYYYYYYo..",
+    "..ooYYYYYYYYYo..",
+    "ooYYYYYYYYYYYYo.",
+    "oGGGGGGGGGGGGGo.",
+    "oGGhGGGGGhhGGGo.",
+    "oGhhGGGGGGGGGGo.",
+    "oGGGGGhhGGGGhGo.",
+    "oDDDDDDDDDDDDDo.",
+    "ooooooooooooooo.",
+  ], GOLD_PAL);
+
+  function updateSpecials(dt) {
+    if (critSpot) {
+      critSpot.life -= dt;
+      if (critSpot.life <= 0) { critSpot = null; nextCritSpot = critSpotDelay(); }
+    } else if ((nextCritSpot -= dt) <= 0) spawnCritSpot();
+
+    if (golden) {
+      golden.life -= dt;
+      if (golden.life <= 0) { golden = null; nextGolden = goldenDelay(); }
+    } else if ((nextGolden -= dt) <= 0) spawnGolden();
+
+    for (let i = buffs.length - 1; i >= 0; i--) if (buffs[i].until <= t) buffs.splice(i, 1);
+    if (t - lastClickT > COMBO_WINDOW) combo = 0;
+  }
+
+  function drawSpecials() {
+    if (critSpot) {
+      const cx = CHEESE_X + critSpot.x, cy = cheeseY + critSpot.y;
+      const fade = Math.min(1, critSpot.life * 2, (critSpot.max - critSpot.life) * 4);
+      const k = Math.sin(t * 12) > 0 ? 1 : 0;
+      ctx.globalAlpha = fade;
+      disc(ctx, cx, cy, 4 + k, "rgba(255, 60, 60, 0.35)");
+      ctx.fillStyle = "#ff3b3b";
+      ctx.fillRect(cx - 5 - k, cy, 11 + 2 * k, 1);
+      ctx.fillRect(cx, cy - 5 - k, 1, 11 + 2 * k);
+      ctx.fillStyle = "#ffe066";
+      ctx.fillRect(cx - 2, cy, 5, 1);
+      ctx.fillRect(cx, cy - 2, 1, 5);
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(cx, cy, 1, 1);
+      ctx.globalAlpha = 1;
+    }
+    if (golden) {
+      const fade = Math.min(1, golden.life / 2, (golden.max - golden.life) * 2);
+      const bob = Math.round(Math.sin(t * 3) * 2);
+      const x = Math.round(golden.x), y = Math.round(golden.y) + bob;
+      ctx.globalAlpha = fade;
+      disc(ctx, x, y, 17, `rgba(255, 215, 60, ${0.2 + 0.15 * Math.sin(t * 6)})`);
+      ctx.drawImage(goldenSprite, x - 16, y - 12, 32, 24);
+      // twinkles around it
+      for (let i = 0; i < 4; i++) {
+        const a = t * 2 + i * Math.PI / 2;
+        const px = Math.round(x + Math.cos(a) * 19), py = Math.round(y + Math.sin(a) * 15);
+        ctx.fillStyle = i % 2 ? "#ffffff" : "#fff3a0";
+        ctx.fillRect(px, py, 1, 1);
+        if (Math.sin(t * 8 + i) > 0.3) { ctx.fillRect(px - 1, py, 3, 1); ctx.fillRect(px, py - 1, 1, 3); }
+      }
+      ctx.globalAlpha = 1;
+    }
   }
 
   // ---------- input ----------
@@ -551,16 +700,50 @@
     return [(e.clientX - r.left) * W / r.width, (e.clientY - r.top) * H / r.height];
   }
 
+  // combo state (not saved)
+  let combo = 0, lastClickT = -10, comboShownT = -10;
+  const comboMax = () => has("tail") ? 5 : 3;
+  const comboMult = () => Math.min(comboMax(), 1 + Math.floor(combo / 10) * 0.25);
+
+  function earn(n) { state.coins += n; state.total += n; }
+
   canvas.addEventListener("pointerdown", e => {
     const [sx, sy] = toScene(e);
-    if (cheeseAlphaAt(sx - CHEESE_X, sy - cheeseY) === 0) return;
+
+    // 1. golden cheese
+    if (golden && Math.hypot(sx - golden.x, sy - golden.y) < 18) {
+      e.preventDefault();
+      clickGolden(e);
+      return;
+    }
+
+    // 2. the cheese itself
+    const onSpot = critSpot && Math.hypot(sx - (CHEESE_X + critSpot.x), sy - (cheeseY + critSpot.y)) < 8;
+    if (!onSpot && cheeseAlphaAt(sx - CHEESE_X, sy - cheeseY) === 0) return;
     e.preventDefault();
-    const gain = clickPower();
-    state.coins += gain;
-    state.total += gain;
+
+    combo = (t - lastClickT <= COMBO_WINDOW) ? combo + 1 : 1;
+    lastClickT = t;
+
+    let gain = clickPower() * comboMult();
+    let kind = "", label = "";
+    if (onSpot) {
+      const m = CRIT_SPOT_MULT * (has("claws") ? 2 : 1);
+      gain *= m; kind = "crit big"; label = `CRIT x${m}! `;
+      critSpot = null;
+      nextCritSpot = critSpotDelay();
+      flash("crit");
+      spawnCrumbs(sx, sy, 16, 1.6);
+    } else if (Math.random() < LUCKY_CRIT_CHANCE) {
+      const m = LUCKY_CRIT_MULT * (has("claws") ? 2 : 1);
+      gain *= m; kind = "crit"; label = `crit x${m} `;
+      spawnCrumbs(sx, sy, 9, 1.2);
+    } else {
+      spawnCrumbs(sx, sy, 5);
+    }
+    earn(gain);
     squash = 1;
-    spawnCrumbs(sx, sy, 5);
-    floatText(e.clientX, e.clientY, "+" + fmt(gain, true));
+    floatText(e.clientX, e.clientY, label + "+" + fmt(gain, true), kind);
     updateUI();
   });
   canvas.addEventListener("contextmenu", e => e.preventDefault());
@@ -632,7 +815,32 @@
     save();
   }
 
+  const comboEl = document.getElementById("combo");
+  const buffsEl = document.getElementById("buffs");
+  let buffsKey = "";
+
   function updateUI() {
+    // combo meter
+    if (combo >= 5) {
+      comboEl.hidden = false;
+      comboEl.textContent = `COMBO ${combo} · x${comboMult().toFixed(2)}`;
+      comboEl.classList.toggle("hot", comboMult() >= comboMax());
+    } else comboEl.hidden = true;
+    // active golden buffs
+    const key = buffs.map(b => b.id + Math.ceil(b.until - t)).join();
+    if (key !== buffsKey) {
+      buffsKey = key;
+      buffsEl.replaceChildren(...buffs.map(b => {
+        const d = document.createElement("div");
+        d.className = "buff";
+        d.textContent = `${b.name} ${b.label} · ${Math.ceil(b.until - t)}s`;
+        const bar = document.createElement("i");
+        bar.style.width = (100 * (b.until - t) / b.secs) + "%";
+        d.appendChild(bar);
+        return d;
+      }));
+    }
+
     coinsEl.textContent = fmt(state.coins);
     cpsEl.textContent = fmt(cps(), true);
     perClickEl.textContent = fmt(clickPower(), true);
@@ -771,6 +979,7 @@
     state.total += gain;
 
     squash = Math.max(0, squash - dt * 8);
+    updateSpecials(dt);
 
     for (const c of critters) updateCritter(c, dt);
 
@@ -814,6 +1023,8 @@
     }
 
     for (const c of critters) if (c.y >= CHEESE_BASE) drawCritter(c);
+
+    drawSpecials();
 
     for (const p of particles) {
       const x = Math.round(p.x), y = Math.round(p.y);

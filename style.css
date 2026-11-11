@@ -60,7 +60,7 @@ html.rat.bite, html.rat.bite * { cursor: var(--rat-bite), auto !important; }
   }
   .panel { min-height: 0; display: flex; flex-direction: column; }
   .left { justify-content: center; }
-  .left .scene-wrap { width: min(100%, calc((100dvh - 250px) * 160 / 176)); max-width: none; }
+  .left .scene-wrap { width: min(100%, calc((100dvh - 290px) * 160 / 176)); max-width: none; }
   .shop-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 4px 6px 4px 4px; }
 }
 
@@ -225,3 +225,36 @@ h2 {
 #upgradeSection[hidden] { display: none; }
 .shop-scroll::-webkit-scrollbar { width: 8px; }
 .shop-scroll::-webkit-scrollbar-thumb { background: #46376e; }
+
+/* ---------- crits, combo, golden cheese ---------- */
+.float.crit { color: #ff6b6b; text-shadow: 2px 2px 0 #5a0f0f; font-size: 1.6em; }
+.float.crit.big { font-size: 2em; color: #ff4d4d; animation-duration: 1.2s; }
+.float.gold { color: #ffe066; text-shadow: 2px 2px 0 #7a4a0a, 0 0 8px #ffd43b; font-size: 1.5em; animation-duration: 1.6s; }
+
+.combo {
+  position: absolute; top: 8px; left: 50%; transform: translateX(-50%);
+  pointer-events: none; white-space: nowrap;
+  color: #fff; background: #ff922b; padding: 4px 8px;
+  box-shadow: 0 0 0 3px var(--border);
+  font-size: .9em;
+}
+.combo.hot { background: #e03131; animation: comboPulse .3s steps(2) infinite; }
+@keyframes comboPulse { 50% { transform: translateX(-50%) scale(1.08); } }
+
+#flash { position: absolute; inset: 0; pointer-events: none; opacity: 0; }
+#flash.flash-crit { background: #ff3b3b; animation: flash .25s steps(3) forwards; }
+#flash.flash-gold { background: #ffe066; animation: flash .5s steps(4) forwards; }
+@keyframes flash { from { opacity: .45; } to { opacity: 0; } }
+
+.buffs { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-bottom: 8px; flex: none; }
+.buffs:empty { display: none; }
+.buff {
+  position: relative; overflow: hidden;
+  color: #3a2400; background: #ffd43b; padding: 4px 8px 6px;
+  box-shadow: 0 0 0 3px var(--border); font-size: .8em;
+}
+.buff i { position: absolute; left: 0; bottom: 0; height: 3px; background: #7a4a0a; }
+
+@media (prefers-reduced-motion: reduce) {
+  .combo.hot { animation: none; }
+}
