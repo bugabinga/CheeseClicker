@@ -284,3 +284,10 @@ h2 {
   background-position: 16px 26px, 16px 16px, 28px 12px, 40px 16px, 29px 30px;
   background-repeat: no-repeat;
 }
+
+/* ---------- buy / sell switch ---------- */
+.mode { display: flex; justify-content: center; gap: 12px; margin: 0 0 12px; }
+.mode .small-btn { background: #3a2d5c; }
+.mode .small-btn.on { background: #ffc93c; color: #3a2400; }
+#modeSell.on { background: #ff6b6b; color: #fff; }
+.shop.selling .item .cost { color: #ff8787; }

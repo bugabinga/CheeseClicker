@@ -1101,7 +1101,7 @@
     const [icon, ictx] = makeCanvas(32, 24);
     const x = { worm: 25, bunny: 21, cow: 27, pig: 24, bird: 22 }[h.kind] || 22;
     DRAW[h.kind](ictx, h, x, 21, 1, iconState);
-    const it = makeItem(icon, () => buyHelper(h));
+    const it = makeItem(icon, () => (sellMode ? sellHelper(h) : buyHelper(h)));
     shopEl.appendChild(it.btn);
     items.push({ h, i, ...it });
   });
@@ -1118,6 +1118,38 @@
     upEl.appendChild(it.btn);
     upItems.push({ u, ...it });
   });
+
+  // sell: refund half of what the last one cost
+  let sellMode = false;
+  const refundOf = h => state.owned[h.id] > 0
+    ? Math.floor(Math.ceil(h.cost * Math.pow(COST_GROWTH, state.owned[h.id] - 1)) / 2) : 0;
+
+  function sellHelper(h) {
+    if (state.owned[h.id] < 1) return;
+    const r = refundOf(h);
+    state.owned[h.id]--;
+    state.coins += r;           // refund only, so it does not count toward "total made"
+    // remove a sprite if there are now more on screen than owned
+    const mine = critters.filter(c => c.h === h);
+    if (mine.length > state.owned[h.id]) {
+      const c = mine[mine.length - 1];
+      poof(c.x, c.y - 6, "#ffd43b");
+      critters.splice(critters.indexOf(c), 1);
+    }
+    updateUI();
+    save();
+  }
+
+  const modeBuy = document.getElementById("modeBuy"), modeSell = document.getElementById("modeSell");
+  function setSellMode(on) {
+    sellMode = on;
+    modeBuy.classList.toggle("on", !on); modeSell.classList.toggle("on", on);
+    modeBuy.setAttribute("aria-pressed", String(!on)); modeSell.setAttribute("aria-pressed", String(on));
+    shopEl.classList.toggle("selling", on);
+    updateUI();
+  }
+  modeBuy.addEventListener("click", () => setSellMode(false));
+  modeSell.addEventListener("click", () => setSellMode(true));
 
   function buyHelper(h) {
     const c = costOf(h);
@@ -1193,11 +1225,11 @@
       btn.classList.toggle("locked", !unlocked);
       const c = costOf(h);
       const afford = state.coins >= c;
-      btn.disabled = !unlocked || !afford;
-      btn.classList.toggle("affordable", unlocked && afford);
+      btn.disabled = sellMode ? state.owned[h.id] < 1 : (!unlocked || !afford);
+      btn.classList.toggle("affordable", !sellMode && unlocked && afford);
       it.name.textContent = unlocked ? h.name : "???";
       it.desc.textContent = unlocked ? `${h.desc} +${fmt(h.cps, true)}/s each` : "keep clicking...";
-      it.cost.textContent = "🧀 " + fmt(c);
+      it.cost.textContent = sellMode ? (state.owned[h.id] ? "sell for 🧀 " + fmt(refundOf(h)) : "none to sell") : "🧀 " + fmt(c);
       it.owned.textContent = state.owned[h.id] || "";
       prevUnlocked = unlocked;
     }
