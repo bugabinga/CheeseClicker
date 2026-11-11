@@ -258,3 +258,29 @@ h2 {
 @media (prefers-reduced-motion: reduce) {
   .combo.hot { animation: none; }
 }
+
+/* ---------- events, monsters, prestige ---------- */
+.float.event { color: #fff; text-shadow: 3px 3px 0 #3a1d2b, 0 0 10px #9b5de5; font-size: 2em; animation-duration: 2s; }
+.float.monster { color: #d0bfff; text-shadow: 2px 2px 0 #3a1d2b; font-size: 1.4em; animation-duration: 1.4s; }
+.float.hot { color: #ff922b; text-shadow: 2px 2px 0 #5a1f00; font-size: 1.3em; }
+.buff.event { background: #9b5de5; color: #fff; }
+.buff.event i { background: #3a1d2b; }
+.buff.double { background: #ff6b6b; color: #fff; }
+
+.crowns { color: #ffd43b; font-size: .85em; }
+.prestige { margin-top: 22px; }
+.crown-title { color: #ffd43b; text-shadow: 3px 3px 0 #7a4a0a; }
+.prestige-btn { background: #5c3d0a; }
+.prestige-btn:not(:disabled):hover { background: #7a520e; }
+.prestige-btn .name { color: #ffe066; }
+.crown-icon {
+  width: 64px; height: 48px; display: block; background: #241b3b;
+  /* pixel crown */
+  background-image:
+    linear-gradient(#ffd43b, #ffd43b), linear-gradient(#ffd43b, #ffd43b),
+    linear-gradient(#ffd43b, #ffd43b), linear-gradient(#ffd43b, #ffd43b),
+    linear-gradient(#e03131, #e03131);
+  background-size: 32px 12px, 8px 12px, 8px 16px, 8px 12px, 6px 6px;
+  background-position: 16px 26px, 16px 16px, 28px 12px, 40px 16px, 29px 30px;
+  background-repeat: no-repeat;
+}

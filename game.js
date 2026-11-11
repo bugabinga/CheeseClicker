@@ -17,12 +17,15 @@
     { id: "busy",    kind: "worm",    name: "Busy Worm",    desc: "wears a headband. works hard!", cost: 100,     cps: 1,    color: "#ff8fab", dark: "#d9607f", segs: 5, hat: "band" },
     { id: "snail",   kind: "snail",   name: "Snail",        desc: "slow, but never gives up.",    cost: 500,     cps: 4 },
     { id: "digger",  kind: "worm",    name: "Digger Worm",  desc: "digs up buried cheese.",       cost: 1100,    cps: 8,    color: "#f0a77c", dark: "#c47650", segs: 5, hat: "helmet" },
+    { id: "bird",    kind: "bird",    name: "Bluebird",     desc: "flies in to peck the cheese.", cost: 2500,    cps: 13 },
     { id: "mouse",   kind: "mouse",   name: "Field Mouse",  desc: "the rat's little cousin.",     cost: 5000,    cps: 20 },
     { id: "family",  kind: "worm",    name: "Worm Family",  desc: "the whole family helps out.",  cost: 12000,   cps: 47,   color: "#c9a0ff", dark: "#9a6fd6", segs: 5, hat: "bow" },
     { id: "hamster", kind: "hamster", name: "Hamster",      desc: "stuffs cheese in its cheeks.", cost: 50000,   cps: 110 },
     { id: "king",    kind: "worm",    name: "King Worm",    desc: "rules the cheese kingdom.",    cost: 130000,  cps: 260,  color: "#ff6b8b", dark: "#c43d5d", segs: 6, hat: "crown" },
+    { id: "pig",     kind: "pig",     name: "Piggy",        desc: "oink! eats cheese super fast.", cost: 260000,  cps: 520 },
     { id: "bunny",   kind: "bunny",   name: "Cheese Bunny", desc: "hops in with cheese.",         cost: 600000,  cps: 700 },
     { id: "space",   kind: "worm",    name: "Space Worm",   desc: "brings cheese from the moon.", cost: 1400000, cps: 1400, color: "#8fd3ff", dark: "#4f9bd1", segs: 6, hat: "astro" },
+    { id: "cow",     kind: "cow",     name: "Cheese Cow",   desc: "makes milk for more cheese.",  cost: 4000000, cps: 3600 },
   ];
 
   // One-time click upgrades.
@@ -52,8 +55,26 @@
   ];
   const buffs = []; // { id, name, label, until, cpsMult, clickMult, secs }
 
+  const EVENTS = [
+    { id: "rain",      name: "RAIN",         label: "helpers x2",                 dur: 45, cpsMult: 2 },
+    { id: "freeze",    name: "FREEZE",       label: "clicks x3, helpers x0.5",    dur: 40, clickMult: 3, cpsMult: 0.5 },
+    { id: "flare",     name: "SUN ERUPTION", label: "clicks x2, more crits",      dur: 35, clickMult: 2, critRate: 3 },
+    { id: "eclipse",   name: "ECLIPSE",      label: "golden cheese everywhere",   dur: 30, goldenRate: 8 },
+    { id: "volcano",   name: "VOLCANO",      label: "catch the hot cheese",       dur: 30 },
+    { id: "windy",     name: "WINDY",        label: "combos last longer, grow x2", dur: 40, comboWindow: 2, comboStep: 2 },
+    { id: "bloodmoon", name: "BLOOD MOON",   label: "click the monsters",         dur: 45 },
+  ];
+  let activeEvent = null;   // { def, until }
+  let nextEvent = 50 + Math.random() * 30;
+  let lastEventId = "";
+  const DOUBLE_SECS = 20;   // blood moon monster reward: x2 cheese for 20s
+
   // ---------- state ----------
-  const state = { coins: 0, total: 0, owned: {}, upgrades: [] };
+  const state = { coins: 0, total: 0, owned: {}, upgrades: [], crowns: 0 };
+  const PRESTIGE_BASE = 1e5;    // coins made this run for the first crown
+  const CROWN_BONUS = 0.10;     // +10% coins per crown
+  const crownsFor = total => Math.floor(Math.cbrt(total / PRESTIGE_BASE));
+  const prestigeMult = () => 1 + state.crowns * CROWN_BONUS;
   HELPERS.forEach(h => (state.owned[h.id] = 0));
 
   function load() {
@@ -67,6 +88,7 @@
         const n = s.owned[h.id];
         if (Number.isInteger(n) && n >= 0) state.owned[h.id] = n;
       });
+      if (Number.isInteger(s.crowns) && s.crowns >= 0) state.crowns = s.crowns;
       if (Array.isArray(s.upgrades)) {
         state.upgrades = s.upgrades.filter(id => UPGRADES.some(u => u.id === id));
       }
@@ -80,7 +102,8 @@
   const costOf = h => Math.ceil(h.cost * Math.pow(COST_GROWTH, state.owned[h.id]));
   const baseCps = () => HELPERS.reduce((s, h) => s + h.cps * state.owned[h.id], 0);
   const buffMult = key => buffs.reduce((m, b) => m * (b[key] || 1), 1);
-  const cps = () => baseCps() * buffMult("cpsMult");
+  const evt = () => (activeEvent && activeEvent.def) || {};
+  const cps = () => baseCps() * buffMult("cpsMult") * (evt().cpsMult || 1) * prestigeMult();
   function clickPower() {
     let add = 1, mult = 1, pct = 0;
     for (const u of UPGRADES) if (has(u.id)) {
@@ -88,7 +111,7 @@
       if (u.mult) mult *= u.mult;
       if (u.pct) pct += u.pct;
     }
-    return (add * mult + cps() * pct) * buffMult("clickMult");
+    return (add * mult * prestigeMult() + cps() * pct) * buffMult("clickMult") * (evt().clickMult || 1);
   }
 
   function fmt(n, decimals = false) {
@@ -195,6 +218,17 @@
     }
     ctx.putImageData(img, 0, 0);
     return { canvas: c, data: img.data };
+  })();
+  const frozenCheese = (() => {
+    const [c, g] = makeCanvas(CHEESE_W, CHEESE_H);
+    g.drawImage(cheese.canvas, 0, 0);
+    g.globalCompositeOperation = "source-atop";
+    g.fillStyle = "rgba(116, 192, 252, 0.55)";
+    g.fillRect(0, 0, CHEESE_W, CHEESE_H);
+    g.fillStyle = "#ffffff";
+    for (let x = 10; x < 80; x += 7) g.fillRect(x, 36, 2, 3 + (x % 3));   // icicles
+    g.fillRect(14, 40, 1, 6); g.fillRect(14, 40, 4, 1);                     // shine
+    return c;
   })();
   const cheeseAlphaAt = (x, y) => {
     x = Math.floor(x); y = Math.floor(y);
@@ -408,7 +442,70 @@
     f.px(-2, -1, 2, 1, shade);
   }
 
-  const DRAW = { worm: drawWorm, snail: drawSnail, mouse: drawMouse, hamster: drawHamster, bunny: drawBunny };
+  function drawBird(ctx, h, x, y, dir, c) {
+    const f = frame(ctx, x, y, dir);
+    const blue = "#4dabf7", dark = "#1c7ed6";
+    const flying = c.lift > 2;
+    f.d(-3, -4, 4, OUTLINE);
+    f.d(0, -7, 3, OUTLINE);
+    f.px(-8, -6, 3, 2, OUTLINE);
+    f.d(-3, -4, 3, blue);
+    f.px(-4, -3, 4, 2, "#ffffff");      // belly
+    f.d(0, -7, 2, blue);
+    f.px(-8, -5, 3, 1, dark);           // tail
+    f.px(2, -7, 2, 1, "#ffa94d");       // beak
+    f.px(0, -8, 1, c.blink ? 1 : 1, c.blink ? dark : "#000000");
+    f.px(1, -6, 1, 1, "#ff8fab");       // cheek
+    if (flying && c.step) { f.px(-5, -10, 4, 3, OUTLINE); f.px(-4, -9, 3, 2, dark); }   // wing up
+    else { f.px(-5, -5, 4, 2, dark); }                                                    // wing down
+    if (!flying) { f.px(-3, -1, 1, 1, "#ffa94d"); f.px(-1, -1, 1, 1, "#ffa94d"); }
+  }
+
+  function drawPig(ctx, h, x, y, dir, c) {
+    const f = frame(ctx, x, y, dir);
+    const pink = "#ffb3c7", dark = "#f783ac";
+    const a = c.step ? 1 : 0;
+    // legs
+    for (const [lx, o] of [[-11, a], [-8, -a], [-5, a], [-2, -a]]) { f.px(lx, -3 + o * 0, 2, 3, OUTLINE); f.px(lx, -3, 1, 2, dark); }
+    f.d(-7, -7, 6, OUTLINE);
+    f.d(-1, -8, 4, OUTLINE);
+    f.px(-15, -10, 2, 1, OUTLINE); f.px(-16, -11, 1, 2, OUTLINE);  // curly tail
+    f.d(-7, -7, 5, pink);
+    f.px(-10, -11, 4, 1, "#ffd8e4");     // shine
+    f.d(-1, -8, 3, pink);
+    f.px(-3, -13, 2, 2, dark);            // ear
+    f.px(2, -9, 3, 3, "#ff8fab");         // snout
+    f.px(3, -8, 1, 1, "#c2255c"); f.px(4, -8, 1, 1, "#c2255c");
+    f.px(0, -10, 1, c.blink ? 1 : 2, "#000000");
+  }
+
+  function drawCow(ctx, h, x, y, dir, c) {
+    const f = frame(ctx, x, y, dir);
+    const a = c.step ? 1 : 0;
+    // legs
+    for (const [lx, o] of [[-19, a], [-15, 0], [-9, a], [-5, 0]]) {
+      f.px(lx + o, -6, 3, 6, OUTLINE); f.px(lx + o + 1, -6, 1, 4, "#ffffff"); f.px(lx + o, -1, 3, 1, "#495057");
+    }
+    // body
+    f.px(-21, -17, 20, 12, OUTLINE);
+    f.px(-20, -16, 18, 10, "#ffffff");
+    f.px(-17, -15, 4, 3, "#343a40"); f.px(-10, -12, 5, 4, "#343a40"); f.px(-6, -16, 3, 2, "#343a40"); f.px(-19, -9, 3, 2, "#343a40");
+    f.px(-12, -7, 4, 2, "#ffc9d6");        // udder
+    // tail
+    f.px(-22, -16, 1, 7, OUTLINE); f.px(-23, -10, 2, 2, "#343a40");
+    // head
+    f.px(-4, -21, 9, 10, OUTLINE);
+    f.px(-3, -20, 7, 8, "#ffffff");
+    f.px(-2, -20, 3, 2, "#343a40");
+    f.px(0, -15, 5, 4, "#ffb3c1");          // muzzle
+    f.px(1, -14, 1, 1, "#c2255c"); f.px(3, -14, 1, 1, "#c2255c");
+    f.px(0, -18, 1, c.blink ? 1 : 2, "#000000");
+    f.px(-3, -23, 1, 2, "#ffe8a3"); f.px(2, -23, 1, 2, "#ffe8a3");   // horns
+    f.px(-6, -19, 2, 2, "#ffffff");                                  // ear
+    f.px(-3, -11, 3, 2, "#ffd43b");                                  // bell
+  }
+
+  const DRAW = { worm: drawWorm, snail: drawSnail, mouse: drawMouse, hamster: drawHamster, bunny: drawBunny, bird: drawBird, pig: drawPig, cow: drawCow };
 
   // movement style per kind: speed (px/s) + how the body animates
   const MOVE = {
@@ -417,6 +514,9 @@
     mouse:   { speed: 14, pause: 0.5 },
     hamster: { speed: 9,  pause: 0.4 },
     bunny:   { speed: 16, pause: 0.3 },
+    bird:    { speed: 24, pause: 0 },
+    pig:     { speed: 10, pause: 0.4 },
+    cow:     { speed: 6,  pause: 0.5 },
   };
 
   // ---------- scene ----------
@@ -459,6 +559,16 @@
       const h2 = Math.round(5 + Math.sin(x / 11 + 2) * 3);
       g.fillStyle = "#5aae55"; g.fillRect(x, GROUND_Y - h2, 1, h2);
     }
+    // a sleepy volcano on the left
+    for (let y = 66; y < GROUND_Y; y++) {
+      const hw = Math.round(4 + (y - 66) * 0.75);
+      for (let x = 24 - hw; x <= 24 + hw; x++) {
+        const edge = x === 24 - hw || x === 24 + hw || y === 66;
+        g.fillStyle = edge ? "#3d2f45" : x < 24 ? "#8a7a90" : "#6b5b73";
+        g.fillRect(x, y, 1, 1);
+      }
+    }
+    g.fillStyle = "#3d2f45"; g.fillRect(21, 66, 7, 2);
     for (let y = GROUND_Y; y < H; y++) for (let x = 0; x < W; x++) {
       const r = rnd();
       g.fillStyle = r < 0.08 ? "#4a2f22" : r < 0.14 ? "#7a5236" : "#5e3d2a";
@@ -490,8 +600,10 @@
   function drawCloud(cx, cy, k) {
     const r = Math.round(5 * k);
     const parts = [[0, 0, r], [r + 1, -Math.round(r * 0.6), r + 1], [2 * r + 2, 0, r], [r + 1, 1, r]];
-    for (const [dx, dy, rr] of parts) disc(ctx, cx + dx, cy + dy, rr, "#dbeefa");
-    for (const [dx, dy, rr] of parts) disc(ctx, cx + dx, cy + dy - 1, rr, "#ffffff");
+    const id = activeEvent ? activeEvent.def.id : "";
+    const dark = id === "rain" || id === "bloodmoon" || id === "eclipse";
+    for (const [dx, dy, rr] of parts) disc(ctx, cx + dx, cy + dy, rr, dark ? "#6c7184" : "#dbeefa");
+    for (const [dx, dy, rr] of parts) disc(ctx, cx + dx, cy + dy - 1, rr, dark ? "#8a90a6" : "#ffffff");
   }
 
   const critters = [];
@@ -566,7 +678,7 @@
 
   // ---------- crit spots & golden cheese ----------
   let critSpot = null;          // { x, y, life, max } in cheese-local pixels
-  const critSpotDelay = () => (has("eyes") ? 2 : 4) + Math.random() * (has("eyes") ? 3 : 6);
+  const critSpotDelay = () => ((has("eyes") ? 2 : 4) + Math.random() * (has("eyes") ? 3 : 6)) / (evt().critRate || 1);
   let nextCritSpot = 3;
 
   function spawnCritSpot() {
@@ -583,7 +695,7 @@
   }
 
   let golden = null;            // { x, y, life, max }
-  const goldenDelay = () => (40 + Math.random() * 80) * (has("whiskers") ? 0.5 : 1);
+  const goldenDelay = () => (40 + Math.random() * 80) * (has("whiskers") ? 0.5 : 1) / (evt().goldenRate || 1);
   let nextGolden = 25 + Math.random() * 20; // first one comes fairly soon
 
   function spawnGolden() {
@@ -655,7 +767,7 @@
     } else if ((nextGolden -= dt) <= 0) spawnGolden();
 
     for (let i = buffs.length - 1; i >= 0; i--) if (buffs[i].until <= t) buffs.splice(i, 1);
-    if (t - lastClickT > COMBO_WINDOW) combo = 0;
+    if (t - lastClickT > (evt().comboWindow || COMBO_WINDOW)) combo = 0;
   }
 
   function drawSpecials() {
@@ -694,6 +806,189 @@
     }
   }
 
+  // ---------- events ----------
+  const monsters = [];   // blood moon critters
+  const lava = [];       // hot cheese chunks from the volcano
+  const weather = [];    // rain drops, snow flakes, leaves, embers
+  let cloudT = 0;
+  let nextMonster = 0, nextLava = 0;
+
+  function startEvent(id) {
+    const pool = EVENTS.filter(ev => ev.id !== lastEventId);
+    const def = id ? EVENTS.find(ev => ev.id === id) : pool[Math.floor(Math.random() * pool.length)];
+    activeEvent = { def, until: t + def.dur };
+    lastEventId = def.id;
+    // make the event's specials show up right away
+    if (def.goldenRate && !golden) nextGolden = Math.min(nextGolden, 2);
+    if (def.critRate && !critSpot) nextCritSpot = Math.min(nextCritSpot, 1);
+    nextMonster = 1; nextLava = 1;
+    flash(def.id === "bloodmoon" || def.id === "volcano" ? "crit" : "gold");
+    const r = canvas.getBoundingClientRect();
+    floatText(r.left + r.width / 2, r.top + r.height * 0.45, def.name + "!", "event");
+  }
+
+  function endEvent() {
+    activeEvent = null;
+    nextEvent = 100 + Math.random() * 100;
+    for (const m of monsters) poof(m.x, m.y - 6, "#9b5de5");
+    monsters.length = 0;
+  }
+
+  function poof(x, y, col) {
+    for (let i = 0; i < 10; i++) {
+      const a = i / 10 * Math.PI * 2;
+      particles.push({ kind: "crumb", x, y, vx: Math.cos(a) * 40, vy: Math.sin(a) * 40 - 20, life: 0.5, col: i % 2 ? col : "#ffffff" });
+    }
+  }
+
+  function updateEvents(dt) {
+    if (activeEvent) {
+      if (t >= activeEvent.until) endEvent();
+    } else if ((nextEvent -= dt) <= 0) startEvent();
+    const id = activeEvent ? activeEvent.def.id : "";
+    cloudT += dt * (id === "windy" ? 10 : 1);
+
+    // blood moon monsters walk in from the sides
+    if (id === "bloodmoon" && (nextMonster -= dt) <= 0 && monsters.length < 6) {
+      nextMonster = 2 + Math.random() * 2.5;
+      const fromLeft = Math.random() < 0.5;
+      monsters.push({ x: fromLeft ? -6 : W + 6, y: FLOOR_TOP + 6 + Math.random() * (FLOOR_BOTTOM - FLOOR_TOP - 6),
+        dir: fromLeft ? 1 : -1, phase: Math.random() * 6, life: 14, col: Math.random() < 0.5 ? "#9b5de5" : "#2fbf71" });
+    }
+    for (let i = monsters.length - 1; i >= 0; i--) {
+      const m = monsters[i];
+      m.phase += dt * 8; m.life -= dt;
+      const goal = m.dir > 0 ? CHEESE_X - 2 : CHEESE_X + CHEESE_W + 2;
+      if ((goal - m.x) * m.dir > 0) m.x += m.dir * 12 * dt;
+      if (m.life <= 0) { poof(m.x, m.y - 6, m.col); monsters.splice(i, 1); }
+    }
+
+    // volcano throws hot cheese
+    if (id === "volcano" && (nextLava -= dt) <= 0) {
+      nextLava = 1.2 + Math.random() * 1.3;
+      lava.push({ x: 24, y: 68, vx: 25 + Math.random() * 45, vy: -70 - Math.random() * 30, landY: 112 + Math.random() * 55, life: 6, landed: false });
+    }
+    for (let i = lava.length - 1; i >= 0; i--) {
+      const l = lava[i];
+      if (!l.landed) {
+        l.vy += 90 * dt; l.x += l.vx * dt; l.y += l.vy * dt;
+        if (l.vy > 0 && l.y >= l.landY) { l.y = l.landY; l.landed = true; spawnCrumbs(l.x, l.y, 4, 0.6); }
+      } else if ((l.life -= dt) <= 0) lava.splice(i, 1);
+    }
+
+    // weather particles
+    const spawn = (n, mk) => { for (let i = 0; i < n; i++) weather.push(mk()); };
+    if (id === "rain" && weather.length < 90) spawn(3, () => ({ k: "rain", x: Math.random() * (W + 30) - 10, y: -4, vx: -15, vy: 160 }));
+    if (id === "freeze" && weather.length < 70 && Math.random() < 0.6) spawn(1, () => ({ k: "snow", x: Math.random() * W, y: -2, vx: 0, vy: 14 + Math.random() * 10, ph: Math.random() * 6 }));
+    if (id === "windy" && weather.length < 25 && Math.random() < 0.25) spawn(1, () => ({ k: "leaf", x: -4, y: Math.random() * H, vx: 70 + Math.random() * 40, vy: (Math.random() - 0.5) * 20, ph: Math.random() * 6 }));
+    if (id === "volcano" && weather.length < 40 && Math.random() < 0.5) spawn(1, () => ({ k: "ember", x: 22 + Math.random() * 6, y: 66, vx: (Math.random() - 0.3) * 20, vy: -30 - Math.random() * 30, life: 1.5 }));
+    for (let i = weather.length - 1; i >= 0; i--) {
+      const w = weather[i];
+      w.x += w.vx * dt; w.y += w.vy * dt;
+      if (w.k === "snow") w.x += Math.sin(t * 2 + w.ph) * 6 * dt;
+      if (w.k === "leaf") w.y += Math.sin(t * 5 + w.ph) * 15 * dt;
+      if (w.k === "ember" && (w.life -= dt) <= 0) { weather.splice(i, 1); continue; }
+      const floor = w.k === "rain" ? FLOOR_TOP + ((i * 37) % (FLOOR_BOTTOM - FLOOR_TOP)) : H + 4;
+      if (w.y > floor || w.x > W + 8 || w.x < -12) {
+        if (w.k === "rain" && Math.random() < 0.4) particles.push({ kind: "crumb", x: w.x, y: w.y, vx: (Math.random() - 0.5) * 20, vy: -20, life: 0.2, col: "#a5d8ff" });
+        weather.splice(i, 1);
+      }
+    }
+  }
+
+  const STARS = Array.from({ length: 28 }, () => [Math.floor(rnd() * W), Math.floor(rnd() * (GROUND_Y - 20))]);
+  const SUN_X = 132, SUN_Y = 20;
+
+  // sky effects drawn right after the background
+  function drawSky() {
+    const id = activeEvent ? activeEvent.def.id : "";
+    const k = activeEvent ? Math.min(1, (t - (activeEvent.until - activeEvent.def.dur)) / 2, (activeEvent.until - t) / 2) : 0;
+    if (!id || k <= 0) return;
+    ctx.globalAlpha = k;
+    if (id === "eclipse" || id === "bloodmoon") {
+      ctx.fillStyle = id === "eclipse" ? "rgba(12, 10, 40, 0.75)" : "rgba(60, 0, 12, 0.75)";
+      ctx.fillRect(0, 0, W, GROUND_Y);
+      ctx.fillStyle = id === "eclipse" ? "rgba(12, 10, 40, 0.45)" : "rgba(40, 0, 0, 0.45)";
+      ctx.fillRect(0, GROUND_Y, W, H - GROUND_Y);
+      ctx.fillStyle = "#ffffff";
+      for (const [x, y] of STARS) if (Math.sin(t * 3 + x) > -0.6) ctx.fillRect(x, y, 1, 1);
+      if (id === "eclipse") {
+        disc(ctx, SUN_X, SUN_Y, 12, "rgba(255, 243, 160, 0.35)");
+        disc(ctx, SUN_X, SUN_Y, 10, "#fff3a0");
+        disc(ctx, SUN_X - 1, SUN_Y, 9, "#14102e");
+      } else {
+        disc(ctx, SUN_X, SUN_Y, 13, "rgba(255, 40, 40, 0.25)");
+        disc(ctx, SUN_X, SUN_Y, 10, "#c92a2a");
+        disc(ctx, SUN_X + 3, SUN_Y - 3, 2, "#a51d1d");
+        disc(ctx, SUN_X - 4, SUN_Y + 3, 3, "#a51d1d");
+        ctx.fillStyle = "#ff6b6b"; ctx.fillRect(SUN_X - 6, SUN_Y - 6, 3, 2);
+      }
+    } else if (id === "rain") {
+      ctx.fillStyle = "rgba(50, 60, 85, 0.45)";
+      ctx.fillRect(0, 0, W, H);
+    } else if (id === "freeze") {
+      ctx.fillStyle = "rgba(200, 230, 255, 0.35)";
+      ctx.fillRect(0, 0, W, H);
+    } else if (id === "flare") {
+      ctx.fillStyle = "rgba(255, 140, 0, 0.18)";
+      ctx.fillRect(0, 0, W, H);
+      const r = 14 + Math.round(Math.sin(t * 6) * 2);
+      disc(ctx, SUN_X, SUN_Y, r + 6, "rgba(255, 120, 0, 0.3)");
+      for (let i = 0; i < 8; i++) {
+        const a = t * 0.8 + i * Math.PI / 4, len = r + 6 + ((i % 2) ? 4 : 0) + Math.round(Math.sin(t * 9 + i) * 3);
+        for (let d = r; d < len; d++) { ctx.fillStyle = d % 2 ? "#ff922b" : "#ffd43b"; ctx.fillRect(Math.round(SUN_X + Math.cos(a) * d), Math.round(SUN_Y + Math.sin(a) * d), 2, 2); }
+      }
+      disc(ctx, SUN_X, SUN_Y, r, "#ffd43b");
+      disc(ctx, SUN_X, SUN_Y, r - 3, "#fff3a0");
+    } else if (id === "volcano") {
+      ctx.fillStyle = "rgba(255, 70, 0, 0.18)";
+      ctx.fillRect(0, 0, W, GROUND_Y);
+      const fl = Math.sin(t * 10) > 0;
+      ctx.fillStyle = fl ? "#ff6b00" : "#ffa94d";
+      ctx.fillRect(20, 66, 9, 2);
+      ctx.fillStyle = "#ff3d00";
+      ctx.fillRect(19, 68, 2, 6); ctx.fillRect(28, 68, 2, 9); ctx.fillRect(17, 74, 2, 6);
+      disc(ctx, 24, 64, 5, "rgba(255, 120, 0, 0.35)");
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  function drawMonster(m) {
+    const x = Math.round(m.x), b = Math.round(Math.abs(Math.sin(m.phase)) * 3), y = Math.round(m.y) - b;
+    disc(ctx, x, y - 5, 6, OUTLINE);
+    disc(ctx, x, y - 5, 5, m.col);
+    ctx.fillStyle = OUTLINE; ctx.fillRect(x - 4, y - 12, 1, 2); ctx.fillRect(x + 3, y - 12, 1, 2);   // horns
+    ctx.fillStyle = "#ffffff"; ctx.fillRect(x - 3, y - 7, 2, 2); ctx.fillRect(x + 1, y - 7, 2, 2);  // eyes
+    ctx.fillStyle = "#000000"; ctx.fillRect(x - 3 + (m.dir > 0 ? 1 : 0), y - 6, 1, 1); ctx.fillRect(x + 1 + (m.dir > 0 ? 1 : 0), y - 6, 1, 1);
+    ctx.fillStyle = OUTLINE; ctx.fillRect(x - 2, y - 3, 4, 1);
+    ctx.fillStyle = "#ffffff"; ctx.fillRect(x + 1, y - 3, 1, 1);                                     // tiny fang
+    ctx.fillStyle = "rgba(0,0,0,0.25)"; ctx.fillRect(x - 4, Math.round(m.y), 9, 1);                  // shadow
+  }
+
+  function drawLava() {
+    for (const l of lava) {
+      const x = Math.round(l.x), y = Math.round(l.y);
+      const blink = l.landed && l.life < 1.5 && Math.sin(t * 20) > 0;
+      if (blink) continue;
+      disc(ctx, x, y, 5, "rgba(255, 90, 0, 0.35)");
+      ctx.fillStyle = OUTLINE; ctx.fillRect(x - 4, y - 3, 8, 6);
+      ctx.fillStyle = "#ff922b"; ctx.fillRect(x - 3, y - 2, 6, 4);
+      ctx.fillStyle = "#ffd43b"; ctx.fillRect(x - 3, y - 2, 6, 1);
+      ctx.fillStyle = "#e8590c"; ctx.fillRect(x + 1, y, 1, 1); ctx.fillRect(x - 2, y + 1, 1, 1);
+      if (!l.landed) { ctx.fillStyle = "#ff6b00"; ctx.fillRect(x - Math.sign(l.vx) * 5, y - 1, 2, 2); }
+    }
+  }
+
+  function drawWeather() {
+    for (const w of weather) {
+      const x = Math.round(w.x), y = Math.round(w.y);
+      if (w.k === "rain") { ctx.fillStyle = "#a5d8ff"; ctx.fillRect(x, y, 1, 3); }
+      else if (w.k === "snow") { ctx.fillStyle = "#ffffff"; ctx.fillRect(x, y, 1, 1); if ((x + y) % 3 === 0) { ctx.fillRect(x - 1, y, 3, 1); ctx.fillRect(x, y - 1, 1, 3); } }
+      else if (w.k === "leaf") { ctx.fillStyle = Math.sin(t * 8 + w.ph) > 0 ? "#40c057" : "#f59f00"; ctx.fillRect(x, y, 2, 1); ctx.fillRect(x + 1, y + 1, 1, 1); }
+      else if (w.k === "ember") { ctx.fillStyle = w.life > 0.7 ? "#ffd43b" : "#ff6b00"; ctx.fillRect(x, y, 1, 1); }
+    }
+  }
+
   // ---------- input ----------
   function toScene(e) {
     const r = canvas.getBoundingClientRect();
@@ -717,12 +1012,39 @@
       return;
     }
 
-    // 2. the cheese itself
+    // 2. blood moon monsters
+    const mon = monsters.find(m => Math.hypot(sx - m.x, sy - (m.y - 6)) < 10);
+    if (mon) {
+      e.preventDefault();
+      monsters.splice(monsters.indexOf(mon), 1);
+      poof(mon.x, mon.y - 6, "#9b5de5");
+      const old = buffs.find(b => b.id === "double");
+      if (old) { old.until = Math.min(t + 60, Math.max(old.until, t) + DOUBLE_SECS); old.secs = old.until - t; }
+      else buffs.push({ id: "double", name: "DOUBLE CHEESE", label: "x2 all", secs: DOUBLE_SECS, until: t + DOUBLE_SECS, cpsMult: 2, clickMult: 2 });
+      floatText(e.clientX, e.clientY, "DOUBLE CHEESE! 20s", "monster");
+      updateUI();
+      return;
+    }
+
+    // 3. hot cheese from the volcano
+    const hot = lava.find(l => Math.hypot(sx - l.x, sy - l.y) < 10);
+    if (hot) {
+      e.preventDefault();
+      lava.splice(lava.indexOf(hot), 1);
+      const gain = Math.max(clickPower() * 15, cps() * 20);
+      earn(gain);
+      spawnCrumbs(hot.x, hot.y, 8, 1.2);
+      floatText(e.clientX, e.clientY, "HOT CHEESE +" + fmt(gain), "hot");
+      updateUI();
+      return;
+    }
+
+    // 4. the cheese itself
     const onSpot = critSpot && Math.hypot(sx - (CHEESE_X + critSpot.x), sy - (cheeseY + critSpot.y)) < 8;
     if (!onSpot && cheeseAlphaAt(sx - CHEESE_X, sy - cheeseY) === 0) return;
     e.preventDefault();
 
-    combo = (t - lastClickT <= COMBO_WINDOW) ? combo + 1 : 1;
+    combo = (t - lastClickT <= (evt().comboWindow || COMBO_WINDOW)) ? combo + (evt().comboStep || 1) : 1;
     lastClickT = t;
 
     let gain = clickPower() * comboMult();
@@ -777,7 +1099,7 @@
   const iconState = { arch: 0.5, step: false, blink: false };
   HELPERS.forEach((h, i) => {
     const [icon, ictx] = makeCanvas(32, 24);
-    const x = h.kind === "worm" ? 25 : h.kind === "bunny" ? 21 : 22;
+    const x = { worm: 25, bunny: 21, cow: 27, pig: 24, bird: 22 }[h.kind] || 22;
     DRAW[h.kind](ictx, h, x, 21, 1, iconState);
     const it = makeItem(icon, () => buyHelper(h));
     shopEl.appendChild(it.btn);
@@ -816,6 +1138,9 @@
   }
 
   const comboEl = document.getElementById("combo");
+  const crownLine = document.getElementById("crownLine");
+  const prestigeSection = document.getElementById("prestigeSection");
+  const prestigeInfo = document.getElementById("prestigeInfo");
   const buffsEl = document.getElementById("buffs");
   let buffsKey = "";
 
@@ -827,12 +1152,14 @@
       comboEl.classList.toggle("hot", comboMult() >= comboMax());
     } else comboEl.hidden = true;
     // active golden buffs
-    const key = buffs.map(b => b.id + Math.ceil(b.until - t)).join();
+    const chips = buffs.slice();
+    if (activeEvent) chips.unshift({ id: "evt", event: true, name: activeEvent.def.name, label: activeEvent.def.label, until: activeEvent.until, secs: activeEvent.def.dur });
+    const key = chips.map(b => b.id + Math.ceil(b.until - t)).join();
     if (key !== buffsKey) {
       buffsKey = key;
-      buffsEl.replaceChildren(...buffs.map(b => {
+      buffsEl.replaceChildren(...chips.map(b => {
         const d = document.createElement("div");
-        d.className = "buff";
+        d.className = "buff" + (b.event ? " event" : "") + (b.id === "double" ? " double" : "");
         d.textContent = `${b.name} ${b.label} · ${Math.ceil(b.until - t)}s`;
         const bar = document.createElement("i");
         bar.style.width = (100 * (b.until - t) / b.secs) + "%";
@@ -844,6 +1171,17 @@
     coinsEl.textContent = fmt(state.coins);
     cpsEl.textContent = fmt(cps(), true);
     perClickEl.textContent = fmt(clickPower(), true);
+    crownLine.hidden = state.crowns === 0;
+    crownLine.textContent = `crowns: ${state.crowns} (+${Math.round(state.crowns * CROWN_BONUS * 100)}% coins)`;
+    const pGain = crownsFor(state.total);
+    prestigeSection.hidden = !(state.crowns > 0 || state.total >= PRESTIGE_BASE * 0.3);
+    prestigeBtn.disabled = pGain < 1;
+    const nextAt = PRESTIGE_BASE * Math.pow(pGain + 1, 3);
+    prestigeInfo.textContent = pGain < 1
+      ? `make ${fmt(PRESTIGE_BASE)} coins this run to earn your first crown (${fmt(state.total)} so far).`
+      : `reset coins, helpers and upgrades. keep crowns. next crown at ${fmt(nextAt)} made.`;
+    prestigeBtn.querySelector(".name").textContent = prestigeBtn.dataset.armed ? "SURE? CLICK AGAIN" : `PRESTIGE: +${pGain} crowns`;
+    prestigeBtn.querySelector(".desc").textContent = `each crown = +${CROWN_BONUS * 100}% coins forever`;
     totalEl.textContent = fmt(state.total);
     document.title = fmt(state.coins) + " cheese coins - Cheese Clicker";
 
@@ -892,11 +1230,37 @@
     }
     clearTimeout(resetArmed); resetArmed = null;
     resetBtn.textContent = "reset";
+    state.crowns = 0;
+    wipeRun();
+  });
+
+  function wipeRun() {
     state.coins = 0; state.total = 0; state.upgrades = [];
     HELPERS.forEach(h => (state.owned[h.id] = 0));
     critters.length = 0;
+    buffs.length = 0;
     save();
     updateUI();
+  }
+
+  // prestige: trade this run for crowns (+10% coins each, forever)
+  const prestigeBtn = document.getElementById("prestigeBtn");
+  let prestigeArmed = null;
+  prestigeBtn.addEventListener("click", () => {
+    const gain = crownsFor(state.total);
+    if (gain < 1) return;
+    if (!prestigeArmed) {
+      prestigeBtn.dataset.armed = "1";
+      prestigeArmed = setTimeout(() => { prestigeArmed = null; delete prestigeBtn.dataset.armed; updateUI(); }, 3000);
+      updateUI();
+      return;
+    }
+    clearTimeout(prestigeArmed); prestigeArmed = null; delete prestigeBtn.dataset.armed;
+    state.crowns += gain;
+    flash("gold");
+    const r = canvas.getBoundingClientRect();
+    floatText(r.left + r.width / 2, r.top + r.height * 0.4, `+${gain} CROWNS!`, "event");
+    wipeRun();
   });
 
   // ---------- loop ----------
@@ -959,6 +1323,7 @@
         c.x += dx / dist * stepLen;
         c.y += dy / dist * stepLen;
         if (m.pause && Math.random() < dt * m.pause * 0.5) c.rest = 0.3 + Math.random() * 0.8;
+        if (kind === "bird") { c.step = Math.sin(c.phase * 3) > 0; c.lift = Math.min(30, dist * 0.8) + (c.step ? 1 : 0); }
       }
     }
     c.x = Math.max(16, Math.min(W - 16, c.x));
@@ -980,6 +1345,7 @@
 
     squash = Math.max(0, squash - dt * 8);
     updateSpecials(dt);
+    updateEvents(dt);
 
     for (const c of critters) updateCritter(c, dt);
 
@@ -999,12 +1365,15 @@
     requestAnimationFrame(tick);
   }
 
+  const cheeseImg = () => (activeEvent && activeEvent.def.id === "freeze") ? frozenCheese : cheese.canvas;
+
   function draw() {
     ctx.drawImage(background, 0, 0);
+    drawSky();
 
 
     for (const c of clouds) {
-      const x = ((c.x + t * c.v) % (W + 40)) - 30;
+      const x = ((c.x + cloudT * c.v) % (W + 40)) - 30;
       drawCloud(Math.round(x), c.y, c.s);
     }
 
@@ -1017,14 +1386,17 @@
 
     if (squash > 0) {
       const w = Math.round(CHEESE_W * (1 + squash * 0.04)), h = Math.round(CHEESE_H * (1 - squash * 0.06));
-      ctx.drawImage(cheese.canvas, Math.round(80 - w / 2), cheeseY + (CHEESE_H - h), w, h);
+      ctx.drawImage(cheeseImg(), Math.round(80 - w / 2), cheeseY + (CHEESE_H - h), w, h);
     } else {
-      ctx.drawImage(cheese.canvas, CHEESE_X, cheeseY);
+      ctx.drawImage(cheeseImg(), CHEESE_X, cheeseY);
     }
 
     for (const c of critters) if (c.y >= CHEESE_BASE) drawCritter(c);
+    for (const m of monsters) drawMonster(m);
+    drawLava();
 
     drawSpecials();
+    drawWeather();
 
     for (const p of particles) {
       const x = Math.round(p.x), y = Math.round(p.y);
@@ -1038,6 +1410,10 @@
         ctx.globalAlpha = 1;
       }
     }
+  }
+
+  if (location.hash === "#dev") {
+    window.cheeseDev = { startEvent, spawnGolden, give: n => earn(n), state, monsters, lava };
   }
 
   // ---------- boot ----------
